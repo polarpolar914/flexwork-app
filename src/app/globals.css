@@ -1,0 +1,481 @@
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --border: #e2e5ea;
+  --line: #c9ced6;
+  --text: #1d2330;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-soft: #eff4ff;
+  --ok: #15803d;
+  --ok-soft: #e8f6ed;
+  --warn: #b91c1c;
+  --warn-soft: #fdeaea;
+  --radius: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.topbar-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.brand {
+  font-weight: 700;
+  font-size: 16px;
+}
+.topbar nav {
+  display: flex;
+  gap: 18px;
+}
+.topbar nav a {
+  color: var(--muted);
+  font-weight: 600;
+}
+.topbar nav a:hover {
+  color: var(--accent);
+}
+
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 18px;
+}
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.card-head h2 {
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.field label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+input,
+select {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+input:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+/* 일정 테이블 */
+.sched {
+  width: 100%;
+  border-collapse: collapse;
+}
+.sched th,
+.sched td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+.sched th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.sched td .timeinputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sched td input[type="time"] {
+  width: 110px;
+}
+.fixed-time {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-weight: 600;
+}
+.sched .hours {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.weekday {
+  font-weight: 700;
+}
+.date-sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.total-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+.total-bar.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.total-bar.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+button {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.primary:hover {
+  filter: brightness(0.95);
+  color: #fff;
+}
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  padding: 6px 8px;
+}
+button.danger:hover {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toast {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.toast.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.toast.err {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.muted {
+  color: var(--muted);
+}
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* 기록 목록 */
+.hist {
+  width: 100%;
+  border-collapse: collapse;
+}
+.hist th,
+.hist td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.hist th {
+  font-size: 12px;
+  color: var(--muted);
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #eef1f6;
+  color: #4b5563;
+  margin: 1px 2px;
+}
+.empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 0;
+}
+
+/* 주 선택 토글 */
+.week-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.week-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.week-btn:hover {
+  border-color: var(--accent);
+}
+.week-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.week-btn.active .week-btn-title {
+  color: var(--accent);
+}
+.week-btn-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+}
+.week-btn-range {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 상단 주간 현황 */
+.overview .week-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.week-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: #fcfcfd;
+}
+.week-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.week-mini {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.week-mini td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.week-mini td.wd {
+  width: 24px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.week-mini td.hr {
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.week-total {
+  margin-top: 8px;
+  text-align: right;
+  font-weight: 700;
+  color: var(--accent);
+}
+.week-empty {
+  color: var(--muted);
+  padding: 18px 0;
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .overview .week-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ====== 인쇄용 공식 양식 ====== */
+.print-area {
+  display: none;
+}
+
+@media screen {
+  .print-preview {
+    display: block;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    margin-bottom: 18px;
+  }
+}
+
+/* 원본 docx 모양 재현: 맑은 고딕, 박스 없는 좌측 제목, 균일 굵기 */
+.form-doc {
+  font-family: "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo",
+    -apple-system, sans-serif;
+  color: #000;
+}
+.form-title {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  letter-spacing: -0.5px;
+}
+.form-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+}
+.form-table td {
+  border: 1px solid #000;
+  padding: 7px 6px;
+  text-align: center;
+  vertical-align: middle;
+  font-weight: 400;
+  line-height: 1.5;
+  word-break: keep-all;
+  height: 34px;
+}
+.form-table td.period {
+  white-space: nowrap;
+}
+.form-table td.sign-apply {
+  height: 120px;
+  line-height: 2.1;
+}
+.form-table td.sign-permit {
+  height: 150px;
+  vertical-align: top;
+  text-align: left;
+  padding: 12px 10px;
+}
+.sign-permit .permit-left {
+  text-align: left;
+  margin-bottom: 26px;
+}
+.sign-permit .permit-center {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .container {
+    max-width: none;
+    padding: 0;
+  }
+  .print-preview {
+    display: none !important;
+  }
+  .print-area {
+    display: block;
+  }
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+}
