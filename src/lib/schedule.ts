@@ -264,6 +264,13 @@ function validSnap(hm: string | null, lo: number, hi: number): string | null {
   return hmFromMinutes(m);
 }
 
+// 10분 단위 스냅 후 [lo,hi]로 클램프(범위 밖이어도 버리지 않고 경계값). 미기록만 null.
+function clampSnap(hm: string | null, lo: number, hi: number): string | null {
+  if (!hm) return null;
+  const m = Math.round(toMinutes(hm) / 10) * 10;
+  return hmFromMinutes(Math.max(lo, Math.min(hi, m)));
+}
+
 // Hiworks 근무데이터로 요일별 시간을 자동 반영.
 // - 출근: 09:00~10:00(10분) 밖이면 버리고 10:00
 // - 퇴근: 17:00~19:00(10분) 밖이면 버리고 17:00
@@ -276,7 +283,9 @@ export function fillFromHiworks(days: DayEntry[], rows: WorkDay[]): DayEntry[] {
   const out: DayEntry[] = days.map((d) => {
     if (d.mode !== "work") return { ...d };
     const row = byDate.get(d.date);
-    const vs = validSnap(row?.start ?? null, START_MIN, START_MAX);
+    // 출근: 9시 전이면 9:00, 10시 후면 10:00으로 클램프(버리지 않음). 미기록만 10:00 기본.
+    const vs = clampSnap(row?.start ?? null, START_MIN, START_MAX);
+    // 퇴근: 17~19시 밖이면 버리고 17:00 기본. 금요일 미기록은 아래서 40h로 채움.
     const ve = validSnap(row?.end ?? null, END_MIN, END_MAX);
     return { ...d, start: vs ?? "10:00", end: ve ?? "17:00" };
   });
