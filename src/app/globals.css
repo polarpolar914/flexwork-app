@@ -50,6 +50,8 @@ a {
   margin: 0 auto;
   padding: 14px 20px;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   align-items: center;
   justify-content: space-between;
 }
@@ -59,7 +61,48 @@ a {
 }
 .topbar nav {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 18px;
+}
+.topbar nav .user {
+  font-weight: 600;
+  padding-left: 18px;
+  border-left: 1px solid var(--border);
+}
+
+/* 로그인 */
+.auth-wrap {
+  max-width: 380px;
+  margin: 40px auto 0;
+}
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 18px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+.auth-tabs button {
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+}
+.auth-tabs button.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.auth-submit {
+  width: 100%;
+  margin-top: 12px;
+}
+.auth-foot {
+  margin-top: 14px;
+  text-align: center;
 }
 .topbar nav a {
   color: var(--muted);
@@ -292,6 +335,19 @@ button:disabled {
   background: #eef1f6;
   color: #4b5563;
   margin: 1px 2px;
+}
+.badge.admin {
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-left: 6px;
+}
+/* 넓은 표: 좁은 화면에서는 표만 가로 스크롤 */
+.table-scroll {
+  overflow-x: auto;
+}
+.table-scroll th,
+.table-scroll td {
+  white-space: nowrap;
 }
 .empty {
   text-align: center;

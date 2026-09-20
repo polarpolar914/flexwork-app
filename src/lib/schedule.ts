@@ -61,11 +61,12 @@ export interface Entry {
   settings: Settings;
 }
 
+// 새 사용자 기본값: 회사·공동근무시간만 채우고 개인 정보는 각자 입력
 export const DEFAULT_SETTINGS: Settings = {
   company: "전능아이티㈜",
-  department: "개발2팀",
-  birth: "03.09.14",
-  name: "김동우",
+  department: "",
+  birth: "",
+  name: "",
   coreTime: "10시 ～ 17시(6시간)",
 };
 

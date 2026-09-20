@@ -1,9 +1,11 @@
+import { redirect } from "next/navigation";
 import Planner from "@/components/Planner";
-import { getSettings } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const settings = await getSettings();
-  return <Planner initialSettings={settings} />;
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  return <Planner initialSettings={user.settings} />;
 }

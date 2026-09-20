@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import FormView from "./FormView";
+import { apiFetch } from "@/lib/api";
 import {
   type Entry,
   DAY_MODE_LABEL,
@@ -11,12 +12,22 @@ import {
   totalCreditMinutes,
 } from "@/lib/schedule";
 
-export default function HistoryList() {
+// userId가 있으면 관리자가 다른 사용자의 기록을 보는 읽기 전용 모드
+export default function HistoryList({
+  userId,
+  title = "제출 기록",
+}: {
+  userId?: string;
+  title?: string;
+}) {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const readOnly = Boolean(userId);
 
   async function load() {
-    const res = await fetch("/api/entries", { cache: "no-store" });
+    const res = await apiFetch(
+      userId ? `/api/admin/users/${userId}/entries` : "/api/entries"
+    );
     setEntries(await res.json());
   }
 
@@ -26,7 +37,7 @@ export default function HistoryList() {
 
   async function remove(id: string) {
     if (!confirm("이 기록을 삭제할까요?")) return;
-    await fetch(`/api/entries/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/entries/${id}`, { method: "DELETE" });
     if (open === id) setOpen(null);
     load();
   }
@@ -35,17 +46,26 @@ export default function HistoryList() {
   if (entries.length === 0)
     return (
       <div className="card">
+        {readOnly && <h2>{title}</h2>}
         <div className="empty">
-          아직 저장된 기록이 없습니다.
-          <br />
-          신청서 작성 화면에서 “저장”을 누르면 여기에 쌓입니다.
+          {readOnly ? (
+            "저장된 기록이 없습니다."
+          ) : (
+            <>
+              아직 저장된 기록이 없습니다.
+              <br />
+              신청서 작성 화면에서 “저장”을 누르면 여기에 쌓입니다.
+            </>
+          )}
         </div>
       </div>
     );
 
   return (
     <div className="card">
-      <h2>제출 기록 ({entries.length}건)</h2>
+      <h2>
+        {title} ({entries.length}건)
+      </h2>
       <table className="hist">
         <thead>
           <tr>
@@ -102,9 +122,11 @@ export default function HistoryList() {
                     >
                       Word
                     </a>
-                    <button className="ghost danger" onClick={() => remove(e.id)}>
-                      삭제
-                    </button>
+                    {!readOnly && (
+                      <button className="ghost danger" onClick={() => remove(e.id)}>
+                        삭제
+                      </button>
+                    )}
                   </td>
                 </tr>
                 {open === e.id && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import {
   type Entry,
   formatHM,
@@ -65,7 +66,7 @@ export default function WeekOverview({ reloadKey }: { reloadKey: number }) {
   const nextMon = nextMonday();
 
   useEffect(() => {
-    fetch("/api/entries", { cache: "no-store" })
+    apiFetch("/api/entries")
       .then((r) => r.json())
       .then(setEntries)
       .catch(() => {});

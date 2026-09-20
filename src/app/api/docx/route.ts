@@ -1,8 +1,10 @@
+import { getCurrentUser, unauthorized } from "@/lib/auth";
 import { buildDocx, docxFilename } from "@/lib/docxgen";
 import type { Entry } from "@/lib/schedule";
 
 // 저장하지 않고 현재 입력값으로 즉석 docx 생성
 export async function POST(req: Request) {
+  if (!(await getCurrentUser())) return unauthorized();
   const body = (await req.json()) as Omit<Entry, "id" | "createdAt"> &
     Partial<Pick<Entry, "id" | "createdAt">>;
 

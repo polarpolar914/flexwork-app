@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import FormView from "./FormView";
 import WeekOverview from "./WeekOverview";
+import { apiFetch } from "@/lib/api";
 import {
   type DayEntry,
   type DayMode,
@@ -74,7 +75,10 @@ export default function Planner({
 }) {
   const start0 = nextMonday();
   const [settings, setSettings] = useState<Settings>(initialSettings);
-  const [showSettings, setShowSettings] = useState(false);
+  // 기본 정보에 빈 칸이 있으면(새 사용자) 처음부터 펼쳐 둠
+  const [showSettings, setShowSettings] = useState(() =>
+    Object.values(initialSettings).some((v) => !v.trim())
+  );
   const [week, setWeek] = useState<"this" | "next">("next");
   const [periodStart, setPeriodStart] = useState(start0);
   const [periodEnd, setPeriodEnd] = useState(addDays(start0, 4));
@@ -94,7 +98,7 @@ export default function Planner({
 
   // 저장된 기록 로드 (최초 1회 다음주 자동 선택)
   useEffect(() => {
-    fetch("/api/entries", { cache: "no-store" })
+    apiFetch("/api/entries")
       .then((r) => r.json())
       .then((list: Entry[]) => {
         setEntries(list);
@@ -184,7 +188,7 @@ export default function Planner({
   async function handleSave() {
     setBusy(true);
     try {
-      const res = await fetch("/api/entries", {
+      const res = await apiFetch("/api/entries", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(buildBody()),
@@ -203,7 +207,7 @@ export default function Planner({
   async function handleDownload() {
     setBusy(true);
     try {
-      const res = await fetch("/api/docx", {
+      const res = await apiFetch("/api/docx", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(buildBody()),

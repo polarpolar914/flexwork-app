@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
-import { getSettings, saveSettings } from "@/lib/db";
-import { DEFAULT_SETTINGS, type Settings } from "@/lib/schedule";
+import { getCurrentUser, unauthorized } from "@/lib/auth";
+import { saveUserSettings } from "@/lib/db";
+import type { Settings } from "@/lib/schedule";
 
 export async function GET() {
-  return NextResponse.json(await getSettings());
+  const user = await getCurrentUser();
+  if (!user) return unauthorized();
+  return NextResponse.json(user.settings);
 }
 
 export async function PUT(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return unauthorized();
   const body = (await req.json()) as Partial<Settings>;
-  const merged: Settings = { ...DEFAULT_SETTINGS, ...(await getSettings()), ...body };
-  return NextResponse.json(await saveSettings(merged));
+  // 보낸 항목만 덮어쓰고 나머지는 기존값 유지
+  return NextResponse.json(await saveUserSettings(user.id, body));
 }
