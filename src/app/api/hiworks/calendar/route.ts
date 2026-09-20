@@ -5,6 +5,7 @@ import {
   clearCachedCookie,
   completeOtp,
   getCachedCookie,
+  getEnvCookie,
   getEnvCreds,
   loginWithCreds,
   putPending,
@@ -72,16 +73,28 @@ export async function GET(req: Request) {
     if (cached) {
       const out = await tryFetch(cached);
       if (out !== "expired") return out;
-      clearCachedCookie(); // 만료 → 아래 재로그인
+      clearCachedCookie(); // 만료 → 아래로
     }
 
-    // --- 2) 환경변수 자격증명으로 자동 로그인 ---
+    // --- 2) 환경변수 쿠키(HIWORKS_COOKIE) — 자동 로그인이 막힐 때 쓰는 확실한 경로 ---
+    const envCookie = getEnvCookie();
+    if (envCookie) {
+      const out = await tryFetch(envCookie);
+      if (out !== "expired") {
+        setCachedCookie(envCookie); // 유효하면 캐시
+        return out;
+      }
+      // 만료 → 자동 로그인으로 폴백(자격증명 있으면)
+    }
+
+    // --- 3) 환경변수 자격증명으로 자동 로그인 ---
     const creds = getEnvCreds();
     if (!creds) {
       return NextResponse.json(
         {
-          error:
-            "Hiworks 자격증명이 없습니다. 서버 환경변수 HIWORKS_ID / HIWORKS_PASSWORD 를 설정하세요.",
+          error: envCookie
+            ? "HIWORKS_COOKIE 가 만료됐습니다. 새 쿠키로 교체하세요."
+            : "Hiworks 자격증명이 없습니다. HIWORKS_COOKIE 또는 HIWORKS_ID/HIWORKS_PASSWORD 를 설정하세요.",
         },
         { status: 400 }
       );

@@ -172,13 +172,34 @@ export async function loginWithCreds(creds: {
       referer: LOGIN_ORIGIN + "/",
     }).catch(() => {});
   }
+
+  // 브라우저 2단계 로그인(ID 입력 → "다음")이 하던 오피스 도메인 검증/설정 조회.
+  // 이 단계가 서버 컨텍스트·쿠키를 세팅한다. 건너뛰면 실계정 로그인 POST가 500 난다.
+  const officeDomain = creds.id.split("@")[1] ?? "";
+  if (officeDomain) {
+    await oneShot(`${AUTH}/validate/office-domain/${officeDomain}`, {
+      jar,
+      referer: LOGIN_ORIGIN + "/",
+    }).catch(() => {});
+    await oneShot(`${AUTH}/office-info/${officeDomain}/login-preferences`, {
+      jar,
+      referer: LOGIN_ORIGIN + "/",
+    }).catch(() => {});
+  }
   dbg("search", search, "cookies", [...jar.keys()]);
 
   // 로그인 POST (redirect 수동: 성공 시 302)
+  // ip_security_level: 브라우저 기본값 "1"(Js.DEFAULT). 누락하면 실계정에서 500 난다.
+  // 오피스 IP 보안 설정이 다르면 HIWORKS_IP_LEVEL 로 덮어씀("-1"|"1"|"2").
+  const ipLevel = process.env.HIWORKS_IP_LEVEL || "1";
   const res = await oneShot(`${AUTH}/oauth/authorization/login${search}`, {
     jar,
     method: "POST",
-    json: { id: creds.id, password: creds.password },
+    json: {
+      id: creds.id,
+      password: creds.password,
+      ip_security_level: ipLevel,
+    },
     origin: LOGIN_ORIGIN,
     referer: LOGIN_ORIGIN + "/",
   });
@@ -252,6 +273,12 @@ export function getEnvCreds(): { id: string; password: string } | null {
   const password = process.env.HIWORKS_PASSWORD ?? "";
   if (!id || !password) return null;
   return { id, password };
+}
+
+// 브라우저 DevTools에서 복사한 근태 세션 쿠키(선택). 자동 로그인이 막힐 때 쓰는 확실한 경로.
+// 만료되면 다시 붙여넣어야 한다.
+export function getEnvCookie(): string {
+  return (process.env.HIWORKS_COOKIE ?? "").trim();
 }
 
 // 로그인으로 얻은 근태 세션 쿠키를 메모리에 캐시(재로그인 최소화). 서버 재시작 시 사라짐.

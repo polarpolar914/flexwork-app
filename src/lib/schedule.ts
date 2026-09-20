@@ -222,12 +222,15 @@ export function hmFromMinutes(min: number): string {
 }
 
 // Hiworks my-work-data-calendar 응답 → 일자별 출퇴근.
-// 응답 구조: data.user_work_data[] = { work_date, start_at, end_at, ... }
-// start_at/end_at는 "HH:MM:SS" 또는 datetime → 첫 HH:MM만 취한다.
+// 응답 구조: data.user_work_data[] = { work_date, start_at, end_at, start_status, end_status, ... }
+// start_at/end_at는 "yyyy-mm-dd HH:MM:SS" datetime → 첫 HH:MM만 취한다.
+// status===2 는 "미체크"(실제로 안 찍힘, 시스템 기본값) → 미기록으로 취급(null).
 export function parseWorkCalendar(json: unknown): WorkDay[] {
   const data = (json as { data?: { user_work_data?: unknown } })?.data;
   const rows = Array.isArray(data?.user_work_data) ? data!.user_work_data : [];
-  const hhmm = (v: unknown): string | null => {
+  const UNCHECKED = 2; // 미체크
+  const hhmm = (v: unknown, status: unknown): string | null => {
+    if (status === UNCHECKED) return null; // 미체크 → 미기록
     if (typeof v !== "string") return null;
     const m = v.match(/(\d{1,2}):(\d{2})/);
     if (!m) return null;
@@ -240,8 +243,8 @@ export function parseWorkCalendar(json: unknown): WorkDay[] {
       const o = (r ?? {}) as Record<string, unknown>;
       return {
         date: String(o.work_date ?? ""),
-        start: hhmm(o.start_at),
-        end: hhmm(o.end_at),
+        start: hhmm(o.start_at, o.start_status),
+        end: hhmm(o.end_at, o.end_status),
       };
     })
     .filter((r) => r.date);
