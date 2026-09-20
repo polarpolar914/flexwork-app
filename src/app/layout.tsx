@@ -26,10 +26,9 @@ export default async function RootLayout({
               <nav>
                 <Link href="/">신청서 작성</Link>
                 <Link href="/history">제출 기록</Link>
-                {user.role === "admin" && <Link href="/admin">관리자</Link>}
-                <span className="user">
-                  {user.settings.name || user.username}
-                </span>
+                {user.settings.name && (
+                  <span className="user">{user.settings.name}</span>
+                )}
                 <LogoutButton />
               </nav>
             )}

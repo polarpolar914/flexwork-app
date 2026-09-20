@@ -12,22 +12,17 @@ import {
   totalCreditMinutes,
 } from "@/lib/schedule";
 
-// userId가 있으면 관리자가 다른 사용자의 기록을 보는 읽기 전용 모드
 export default function HistoryList({
-  userId,
   title = "제출 기록",
 }: {
-  userId?: string;
   title?: string;
 }) {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  const readOnly = Boolean(userId);
+  const readOnly = false;
 
   async function load() {
-    const res = await apiFetch(
-      userId ? `/api/admin/users/${userId}/entries` : "/api/entries"
-    );
+    const res = await apiFetch("/api/entries");
     setEntries(await res.json());
   }
 

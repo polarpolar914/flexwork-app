@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, unauthorized } from "@/lib/auth";
-import { saveUserSettings } from "@/lib/db";
+import { saveSettings } from "@/lib/db";
 import type { Settings } from "@/lib/schedule";
 
 export async function GET() {
@@ -14,5 +14,5 @@ export async function PUT(req: Request) {
   if (!user) return unauthorized();
   const body = (await req.json()) as Partial<Settings>;
   // 보낸 항목만 덮어쓰고 나머지는 기존값 유지
-  return NextResponse.json(await saveUserSettings(user.id, body));
+  return NextResponse.json(await saveSettings(body));
 }

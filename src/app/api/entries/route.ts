@@ -6,7 +6,7 @@ import {
   getEntries,
   newId,
   saveEntry,
-  saveUserSettings,
+  saveSettings,
 } from "@/lib/db";
 import type { DayEntry, Settings } from "@/lib/schedule";
 
@@ -56,8 +56,8 @@ export async function POST(req: Request) {
   };
 
   await saveEntry(entry);
-  // 최신 설정값을 이 사용자의 기본값으로 기억
-  await saveUserSettings(user.id, settings);
+  // 최신 설정값을 기본값으로 기억
+  await saveSettings(settings);
 
   return NextResponse.json(entry, { status: 201 });
 }

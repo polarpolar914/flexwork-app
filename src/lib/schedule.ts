@@ -205,3 +205,93 @@ export function buildDefaultDays(periodStart: string): DayEntry[] {
     holidayText: "",
   }));
 }
+
+// ---- Hiworks 근태 → 요일별 시간 자동 반영 ----
+
+// Hiworks 응답 1일치(파싱 결과). start/end는 "HH:MM" 또는 미기록 시 null.
+export interface WorkDay {
+  date: string; // yyyy-mm-dd
+  start: string | null;
+  end: string | null;
+}
+
+export function hmFromMinutes(min: number): string {
+  const m = Math.max(0, Math.min(24 * 60, Math.round(min)));
+  const h = Math.floor(m / 60);
+  return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+// Hiworks my-work-data-calendar 응답 → 일자별 출퇴근.
+// 응답 구조: data.user_work_data[] = { work_date, start_at, end_at, ... }
+// start_at/end_at는 "HH:MM:SS" 또는 datetime → 첫 HH:MM만 취한다.
+export function parseWorkCalendar(json: unknown): WorkDay[] {
+  const data = (json as { data?: { user_work_data?: unknown } })?.data;
+  const rows = Array.isArray(data?.user_work_data) ? data!.user_work_data : [];
+  const hhmm = (v: unknown): string | null => {
+    if (typeof v !== "string") return null;
+    const m = v.match(/(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const h = Math.min(23, parseInt(m[1], 10));
+    const mm = Math.min(59, parseInt(m[2], 10));
+    return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  };
+  return rows
+    .map((r) => {
+      const o = (r ?? {}) as Record<string, unknown>;
+      return {
+        date: String(o.work_date ?? ""),
+        start: hhmm(o.start_at),
+        end: hhmm(o.end_at),
+      };
+    })
+    .filter((r) => r.date);
+}
+
+// 출근 유효범위 09:00~10:00, 퇴근 17:00~19:00 (10분 단위)
+const START_MIN = toMinutes("09:00");
+const START_MAX = toMinutes("10:00");
+const END_MIN = toMinutes("17:00");
+const END_MAX = toMinutes("19:00");
+
+// 10분 단위로 스냅 후 [lo,hi] 범위 안이면 그 값, 밖이면 null(=버림)
+function validSnap(hm: string | null, lo: number, hi: number): string | null {
+  if (!hm) return null;
+  const m = Math.round(toMinutes(hm) / 10) * 10;
+  if (m < lo || m > hi) return null;
+  return hmFromMinutes(m);
+}
+
+// Hiworks 근무데이터로 요일별 시간을 자동 반영.
+// - 출근: 09:00~10:00(10분) 밖이면 버리고 10:00
+// - 퇴근: 17:00~19:00(10분) 밖이면 버리고 17:00
+// - 금요일 퇴근이 (미기록/범위 밖)이면 → 주 40시간을 채우는 10분단위 시각(17:00~19:00)으로
+// 근무일(work)만 대상. 공휴일/연차 등 사용자가 지정한 모드는 그대로 둔다.
+export function fillFromHiworks(days: DayEntry[], rows: WorkDay[]): DayEntry[] {
+  const byDate = new Map(rows.map((r) => [r.date, r]));
+  const FRI = 4;
+
+  const out: DayEntry[] = days.map((d) => {
+    if (d.mode !== "work") return { ...d };
+    const row = byDate.get(d.date);
+    const vs = validSnap(row?.start ?? null, START_MIN, START_MAX);
+    const ve = validSnap(row?.end ?? null, END_MIN, END_MAX);
+    return { ...d, start: vs ?? "10:00", end: ve ?? "17:00" };
+  });
+
+  // 금요일 퇴근이 유효하지 않았으면(기본 17:00으로 채워졌으면) 40시간 맞춤으로 덮어씀
+  const friRow = byDate.get(days[FRI]?.date);
+  const friEndValid = validSnap(friRow?.end ?? null, END_MIN, END_MAX) != null;
+  if (days[FRI]?.mode === "work" && !friEndValid) {
+    const others = out.reduce(
+      (s, d, i) => (i === FRI ? s : s + creditMinutes(d)),
+      0
+    );
+    const need = WEEKLY_TARGET_MIN - others;
+    let end = toMinutes(out[FRI].start) + LUNCH_MIN + need;
+    end = Math.round(end / 10) * 10;
+    end = Math.max(END_MIN, Math.min(END_MAX, end));
+    out[FRI] = { ...out[FRI], end: hmFromMinutes(end) };
+  }
+
+  return out;
+}

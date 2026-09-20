@@ -1,23 +1,24 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, unauthorized } from "@/lib/auth";
-import {
-  getHiworksCookie,
-  getHiworksCreds,
-  saveHiworksCookie,
-} from "@/lib/db";
 import { fetchWorkCalendar, type WorkCalendarQuery } from "@/lib/hiworks";
 import {
+  clearCachedCookie,
   completeOtp,
+  getCachedCookie,
+  getEnvCreds,
   loginWithCreds,
   putPending,
+  setCachedCookie,
   takePending,
 } from "@/lib/hiworks-login";
 
+const PENDING_KEY = "local"; // 단일 계정
+
 // GET /api/hiworks/calendar?start=2026-09-14&end=2026-09-20[&otp=123456]
 //
-// 온디맨드 자동 로그인:
-//  1) 캐시된 쿠키가 있으면 그걸로 조회. 401(만료)이면 재로그인으로 폴백.
-//  2) 저장된 자격증명으로 로그인 → 쿠키 캐시 → 재조회.
+// 온디맨드 자동 로그인(자격증명은 환경변수 HIWORKS_ID/HIWORKS_PASSWORD):
+//  1) 캐시된 세션 쿠키가 있으면 그걸로 조회. 401(만료)이면 재로그인.
+//  2) env 자격증명으로 로그인 → 쿠키 캐시 → 재조회.
 //  3) OTP 오피스면 { otp_required:true } 반환 → 클라가 otp 붙여 재요청 → 완료.
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -42,7 +43,7 @@ export async function GET(req: Request) {
   try {
     // --- OTP 2단계: 대기 중이던 로그인 마무리 ---
     if (otp) {
-      const pending = takePending(user.id);
+      const pending = takePending(PENDING_KEY);
       if (!pending) {
         return NextResponse.json(
           { error: "OTP 대기 세션이 만료됐습니다. 다시 시도하세요." },
@@ -52,11 +53,14 @@ export async function GET(req: Request) {
       const r = await completeOtp(pending, otp);
       if (!r.ok) {
         return NextResponse.json(
-          { error: "error" in r ? r.error : "OTP 실패", detail: "detail" in r ? r.detail : undefined },
+          {
+            error: "error" in r ? r.error : "OTP 실패",
+            detail: "detail" in r ? r.detail : undefined,
+          },
           { status: 401 }
         );
       }
-      await saveHiworksCookie(user.id, r.cookie);
+      setCachedCookie(r.cookie);
       const out = await tryFetch(r.cookie);
       return out === "expired"
         ? NextResponse.json({ error: "로그인 후에도 조회 실패" }, { status: 502 })
@@ -64,20 +68,20 @@ export async function GET(req: Request) {
     }
 
     // --- 1) 캐시 쿠키 우선 ---
-    const cached = await getHiworksCookie(user.id);
+    const cached = getCachedCookie();
     if (cached) {
       const out = await tryFetch(cached);
-      if (out !== "expired") return out; // 성공/기타 응답은 그대로
-      // 만료 → 아래 재로그인
+      if (out !== "expired") return out;
+      clearCachedCookie(); // 만료 → 아래 재로그인
     }
 
-    // --- 2) 저장된 자격증명으로 자동 로그인 ---
-    const creds = await getHiworksCreds(user.id);
+    // --- 2) 환경변수 자격증명으로 자동 로그인 ---
+    const creds = getEnvCreds();
     if (!creds) {
       return NextResponse.json(
         {
           error:
-            "자동 로그인 자격증명이 없습니다. 설정에서 Hiworks id/비번을 등록하거나 쿠키를 넣으세요.",
+            "Hiworks 자격증명이 없습니다. 서버 환경변수 HIWORKS_ID / HIWORKS_PASSWORD 를 설정하세요.",
         },
         { status: 400 }
       );
@@ -85,7 +89,7 @@ export async function GET(req: Request) {
 
     const login = await loginWithCreds(creds);
     if (!login.ok && login.otpRequired) {
-      putPending(user.id, login.pending);
+      putPending(PENDING_KEY, login.pending);
       return NextResponse.json(
         { otp_required: true, message: "OTP 코드를 입력하세요." },
         { status: 202 }
@@ -98,7 +102,7 @@ export async function GET(req: Request) {
       );
     }
 
-    await saveHiworksCookie(user.id, login.cookie);
+    setCachedCookie(login.cookie);
     const out = await tryFetch(login.cookie);
     return out === "expired"
       ? NextResponse.json({ error: "로그인 후에도 조회 실패" }, { status: 502 })

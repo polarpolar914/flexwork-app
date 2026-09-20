@@ -1,109 +1,69 @@
-import { createHash, randomBytes, scrypt, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, sessionCookieOptions } from "./cookie";
-import {
-  addSession,
-  findSession,
-  getUser,
-  removeSession,
-  type User,
-} from "./db";
+import { getSettings } from "./db";
+import type { Settings } from "./schedule";
 
-export const MIN_PASSWORD = 6;
-const USERNAME_RE = /^[a-z0-9_.-]{3,20}$/;
-
-export function isValidUsername(username: string): boolean {
-  return USERNAME_RE.test(username);
+// 단일 계정: 로그인 비밀번호는 환경변수 APP_PASSWORD 하나로만 인증한다.
+// 회원가입·다중 사용자·DB 세션 저장 없음. 세션은 HMAC 서명 쿠키(무상태)다.
+function appPassword(): string {
+  return process.env.APP_PASSWORD ?? "";
 }
 
-// ---- 비밀번호 (scrypt + 사용자별 salt) ----
-
-function scryptKey(password: string, salt: Buffer): Promise<Buffer> {
-  return new Promise((resolve, reject) =>
-    scrypt(password, salt, 64, (err, key) => (err ? reject(err) : resolve(key)))
+// 쿠키 서명 키. 없으면 APP_PASSWORD로 대체 → 비번을 바꾸면 기존 세션도 자동 무효.
+function secret(): string {
+  return (
+    process.env.SESSION_SECRET ||
+    process.env.APP_PASSWORD ||
+    "flexwork-dev-secret"
   );
 }
 
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16);
-  const key = await scryptKey(password, salt);
-  return `scrypt:${salt.toString("hex")}:${key.toString("hex")}`;
+function hmac(input: string): Buffer {
+  return createHmac("sha256", secret()).update(input).digest();
 }
 
-export async function verifyPassword(
-  password: string,
-  stored: string
-): Promise<boolean> {
-  const [algo, salt, key] = stored.split(":");
-  if (algo !== "scrypt" || !salt || !key) return false;
-  const actual = await scryptKey(password, Buffer.from(salt, "hex"));
-  const expected = Buffer.from(key, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+// 세션 토큰 = HMAC(secret,"authed:v1"). 비번/시크릿이 바뀌면 예전 토큰은 검증 실패.
+function makeToken(): string {
+  return hmac("authed:v1").toString("base64url");
 }
 
-// 로그인/가입 요청 본문 → 아이디(소문자)·비밀번호·이름
-export async function readCredentials(req: Request) {
-  const body = ((await req.json().catch(() => null)) ?? {}) as Record<
-    string,
-    unknown
-  >;
-  return {
-    username: String(body.username ?? "").trim().toLowerCase(),
-    password: String(body.password ?? ""),
-    name: String(body.name ?? "").trim(),
-  };
+function validToken(token?: string): boolean {
+  if (!token) return false;
+  const a = Buffer.from(token);
+  const b = Buffer.from(makeToken());
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
-// ---- 세션: 서버에 저장, 만료 없음 (로그아웃해야 끝남) ----
-
-// DB에는 토큰 해시만 저장 → data/ 파일이 새어도 세션을 가로챌 수 없음
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+// 입력 비번을 APP_PASSWORD와 상수시간 비교. env 미설정이면 항상 실패(로그인 불가).
+export async function verifyAppPassword(password: string): Promise<boolean> {
+  const expected = appPassword();
+  if (!expected) return false;
+  // 길이 노출 없이 비교하려고 양쪽을 HMAC 해서 고정 길이로 맞춤
+  return timingSafeEqual(hmac("pw:" + password), hmac("pw:" + expected));
 }
 
-export async function startSession(
-  res: NextResponse,
-  req: Request,
-  userId: string
-) {
-  const token = randomBytes(32).toString("base64url");
-  await addSession({
-    tokenHash: hashToken(token),
-    userId,
-    createdAt: new Date().toISOString(),
-  });
-  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(req));
+// 로그인 여부를 나타내는 최소 사용자 객체. 다중 사용자가 없으므로 id는 고정.
+export interface CurrentUser {
+  id: string;
+  settings: Settings;
 }
 
-export async function endSession(res: NextResponse) {
+export async function getCurrentUser(): Promise<CurrentUser | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (token) await removeSession(hashToken(token));
+  if (!validToken(token)) return null;
+  return { id: "local", settings: await getSettings() };
+}
+
+export function startSession(res: NextResponse, req: Request) {
+  res.cookies.set(SESSION_COOKIE, makeToken(), sessionCookieOptions(req));
+}
+
+export function endSession(res: NextResponse) {
   res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
-}
-
-// 현재 요청의 로그인 사용자 (서버 컴포넌트·라우트 핸들러용)
-export async function getCurrentUser(): Promise<User | null> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-  const session = await findSession(hashToken(token));
-  if (!session) return null;
-  return (await getUser(session.userId)) ?? null;
 }
 
 export function unauthorized() {
   return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-}
-
-// 관리자 API 공통: 관리자면 사용자, 아니면 바로 돌려줄 에러 응답
-export async function requireAdmin(): Promise<User | NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return unauthorized();
-  if (user.role !== "admin") {
-    return NextResponse.json(
-      { error: "관리자만 사용할 수 있습니다." },
-      { status: 403 }
-    );
-  }
-  return user;
 }

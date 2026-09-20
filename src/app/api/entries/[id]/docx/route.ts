@@ -1,5 +1,5 @@
 import { getCurrentUser, unauthorized } from "@/lib/auth";
-import { getEntry, getEntryById } from "@/lib/db";
+import { getEntry } from "@/lib/db";
 import { buildDocx, docxFilename } from "@/lib/docxgen";
 
 export async function GET(
@@ -9,9 +9,7 @@ export async function GET(
   const user = await getCurrentUser();
   if (!user) return unauthorized();
   const { id } = await params;
-  // 관리자는 다른 사용자의 기록도 내려받을 수 있음
-  const entry =
-    user.role === "admin" ? await getEntryById(id) : await getEntry(user.id, id);
+  const entry = await getEntry(user.id, id);
   if (!entry) {
     return new Response(JSON.stringify({ error: "not found" }), {
       status: 404,

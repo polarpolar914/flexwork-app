@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
-import { readCredentials, startSession, verifyPassword } from "@/lib/auth";
-import { findUserByUsername } from "@/lib/db";
+import { startSession, verifyAppPassword } from "@/lib/auth";
 
+// 단일 계정: 비밀번호(APP_PASSWORD)만으로 인증.
 export async function POST(req: Request) {
-  const { username, password } = await readCredentials(req);
-  const user = await findUserByUsername(username);
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+  const body = (await req.json().catch(() => ({}))) as { password?: unknown };
+  const password = String(body.password ?? "");
+
+  if (!(await verifyAppPassword(password))) {
     return NextResponse.json(
-      { error: "아이디 또는 비밀번호가 올바르지 않습니다." },
+      { error: "비밀번호가 올바르지 않습니다." },
       { status: 401 }
     );
   }
 
   const res = NextResponse.json({ ok: true });
-  await startSession(res, req, user.id);
+  startSession(res, req);
   return res;
 }

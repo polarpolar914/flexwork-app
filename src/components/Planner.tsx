@@ -17,9 +17,11 @@ import {
   WEEKDAY_LABELS,
   addDays,
   buildDefaultDays,
+  fillFromHiworks,
   formatHM,
   hoursCellText,
   nextMonday,
+  parseWorkCalendar,
   shortDate,
   thisMonday,
   toMinutes,
@@ -93,8 +95,64 @@ export default function Planner({
   const [entries, setEntries] = useState<Entry[]>([]);
   const inited = useRef(false);
 
+  // Hiworks 자동 불러오기 상태
+  const [hwBusy, setHwBusy] = useState(false);
+  const [otpNeeded, setOtpNeeded] = useState(false);
+  const [otp, setOtp] = useState("");
+  const autoImported = useRef<string | null>(null);
+
   const total = useMemo(() => totalCreditMinutes(days), [days]);
   const diff = total - WEEKLY_TARGET_MIN;
+
+  // Hiworks 근태에서 이번 주 실제 근무시간을 불러와 요일별 시간에 반영.
+  // 앱 세션과 무관한 401(=Hiworks 로그인 실패)이 로그인 페이지로 튕기지 않도록 raw fetch 사용.
+  async function importHiworks(otpCode?: string) {
+    const monday = thisMonday();
+    setHwBusy(true);
+    try {
+      const qs = new URLSearchParams({ start: monday, end: addDays(monday, 4) });
+      if (otpCode) qs.set("otp", otpCode);
+      const res = await fetch(`/api/hiworks/calendar?${qs.toString()}`, {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => null);
+
+      if (res.status === 202 && json?.otp_required) {
+        setOtpNeeded(true);
+        flash("err", "Hiworks OTP 코드를 입력하세요.");
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(json?.error ?? "불러오기 실패");
+      }
+
+      const rows = parseWorkCalendar(json);
+      setDays((ds) => fillFromHiworks(ds, rows));
+      setOtpNeeded(false);
+      setOtp("");
+      flash(
+        "ok",
+        `Hiworks 근무시간을 반영했습니다. (${rows.length}일치 조회)`
+      );
+    } catch (e) {
+      flash("err", "Hiworks: " + (e as Error).message);
+    } finally {
+      setHwBusy(false);
+    }
+  }
+
+  // 이번 주를 선택하면 자동으로 1회 불러오기 (같은 주에는 중복 실행 안 함)
+  useEffect(() => {
+    if (
+      week === "this" &&
+      periodStart === thisMonday() &&
+      autoImported.current !== periodStart
+    ) {
+      autoImported.current = periodStart;
+      importHiworks();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week, periodStart]);
 
   // 저장된 기록 로드 (최초 1회 다음주 자동 선택)
   useEffect(() => {
@@ -361,6 +419,36 @@ export default function Planner({
             );
           })}
         </div>
+        {week === "this" && (
+          <div className="hw-import" style={{ marginTop: 14 }}>
+            <button type="button" onClick={() => importHiworks()} disabled={hwBusy}>
+              {hwBusy ? "Hiworks 조회 중…" : "Hiworks에서 근무시간 불러오기"}
+            </button>
+            {otpNeeded && (
+              <span className="hw-otp" style={{ marginLeft: 10 }}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="OTP 코드"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  style={{ width: 110 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => importHiworks(otp)}
+                  disabled={hwBusy || !otp}
+                  style={{ marginLeft: 6 }}
+                >
+                  OTP 확인
+                </button>
+              </span>
+            )}
+            <span className="hint" style={{ marginLeft: 10 }}>
+              이번 주 실제 출·퇴근 기록으로 시간을 채웁니다.
+            </span>
+          </div>
+        )}
         <div className="row" style={{ marginTop: 14 }}>
           <div className="field" style={{ flex: "1 1 160px" }}>
             <label>신청일</label>

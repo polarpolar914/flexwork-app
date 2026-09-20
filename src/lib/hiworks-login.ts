@@ -245,6 +245,27 @@ export async function completeOtp(
   return { ok: false, error: "OTP 인증 실패", status: res.status, detail: data };
 }
 
+// ---- 환경변수 자격증명 + 세션 쿠키 캐시(서버 메모리) ----
+// 단일 계정이므로 DB에 저장하지 않고 env에서 읽는다.
+export function getEnvCreds(): { id: string; password: string } | null {
+  const id = (process.env.HIWORKS_ID ?? "").trim();
+  const password = process.env.HIWORKS_PASSWORD ?? "";
+  if (!id || !password) return null;
+  return { id, password };
+}
+
+// 로그인으로 얻은 근태 세션 쿠키를 메모리에 캐시(재로그인 최소화). 서버 재시작 시 사라짐.
+const gc = globalThis as typeof globalThis & { __hwCookie?: string };
+export function getCachedCookie(): string {
+  return gc.__hwCookie ?? "";
+}
+export function setCachedCookie(cookie: string) {
+  gc.__hwCookie = cookie;
+}
+export function clearCachedCookie() {
+  gc.__hwCookie = "";
+}
+
 // ---- OTP 대기 상태 임시 보관(서버 메모리, 5분 TTL) ----
 // 온디맨드 흐름: 1단계에서 OTP 필요 → pending을 여기 저장하고 클라에 알림 →
 // 클라가 OTP 코드와 함께 재요청 → 저장된 pending으로 2단계 진행.
