@@ -152,47 +152,22 @@ export async function loginWithCreds(creds: {
   password: string;
 }): Promise<LoginResult> {
   const jar: Jar = new Map();
-
-  // search(=OAuth 쿼리) 확보: hr-work가 HTTP 302를 주면 거기서, 아니면(200 SPA shell) 기본값.
-  let search = `?loginUrl=${encodeURIComponent(HRWORK)}`;
-  try {
-    const entry = await followGets(HRWORK, jar, HRWORK);
-    const u = new URL(entry.url);
-    dbg("entry", u.host + u.pathname, "status", entry.res.status);
-    if (u.host.startsWith("login") && u.search) search = u.search;
-  } catch (e) {
-    dbg("entry err", (e as Error).message);
-  }
-
-  // 쿠키/XSRF 시드: 로그인 페이지 + authorize 엔드포인트 GET
-  await followGets(`${LOGIN_ORIGIN}/${search}`, jar, LOGIN_ORIGIN + "/").catch(() => {});
-  if (!jar.get("XSRF-TOKEN")) {
-    await oneShot(`${AUTH}/oauth/authorization${search}`, {
-      jar,
-      referer: LOGIN_ORIGIN + "/",
-    }).catch(() => {});
-  }
-
-  // 브라우저 2단계 로그인(ID 입력 → "다음")이 하던 오피스 도메인 검증/설정 조회.
-  // 이 단계가 서버 컨텍스트·쿠키를 세팅한다. 건너뛰면 실계정 로그인 POST가 500 난다.
   const officeDomain = creds.id.split("@")[1] ?? "";
-  if (officeDomain) {
-    await oneShot(`${AUTH}/validate/office-domain/${officeDomain}`, {
-      jar,
-      referer: LOGIN_ORIGIN + "/",
-    }).catch(() => {});
-    await oneShot(`${AUTH}/office-info/${officeDomain}/login-preferences`, {
-      jar,
-      referer: LOGIN_ORIGIN + "/",
-    }).catch(() => {});
-  }
-  dbg("search", search, "cookies", [...jar.keys()]);
 
-  // 로그인 POST (redirect 수동: 성공 시 302)
-  // ip_security_level: 브라우저 기본값 "1"(Js.DEFAULT). 누락하면 실계정에서 500 난다.
-  // 오피스 IP 보안 설정이 다르면 HIWORKS_IP_LEVEL 로 덮어씀("-1"|"1"|"2").
+  // 초기 쿠키 시드(로그인 페이지 + hr-work 진입). office-web/login 은 쿼리 없이 POST 한다.
+  await oneShot(`${LOGIN_ORIGIN}/?loginUrl=${encodeURIComponent(HRWORK)}`, {
+    jar,
+    referer: LOGIN_ORIGIN + "/",
+  }).catch(() => {});
+  await followGets(HRWORK, jar, HRWORK).catch(() => {});
+  // 로그인 POST는 어느 오피스인지 h_officeid 쿠키로 판단 → 없으면 도메인으로 채운다.
+  if (officeDomain && !jar.get("h_officeid")) jar.set("h_officeid", officeDomain);
+  dbg("pre-login cookies", [...jar.keys()]);
+
+  // 로그인 POST — 브라우저와 동일하게 office-web/login. 성공 시 200 + PHPSESSID(Domain=hiworks.com).
+  // ip_security_level 기본 "1"(Js.DEFAULT). 오피스 설정 다르면 HIWORKS_IP_LEVEL 로 덮어씀.
   const ipLevel = process.env.HIWORKS_IP_LEVEL || "1";
-  const res = await oneShot(`${AUTH}/oauth/authorization/login${search}`, {
+  const res = await oneShot(`${AUTH}/office-web/login`, {
     jar,
     method: "POST",
     json: {
@@ -203,15 +178,7 @@ export async function loginWithCreds(creds: {
     origin: LOGIN_ORIGIN,
     referer: LOGIN_ORIGIN + "/",
   });
-
-  dbg("login POST status", res.status, "location?", Boolean(res.headers.get("location")));
-
-  // 성공: 3xx 리다이렉트
-  if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
-    const cookie = await finishRedirect(res, `${AUTH}/oauth/authorization/login`, jar);
-    dbg("login ok, final cookies", [...jar.keys()]);
-    return { ok: true, cookie };
-  }
+  dbg("login POST status", res.status, "cookies", [...jar.keys()]);
 
   const text = await res.text();
   let data: unknown;
@@ -221,20 +188,22 @@ export async function loginWithCreds(creds: {
     data = { raw: text.slice(0, 300) };
   }
 
-  dbg("login non-redirect body", JSON.stringify(data).slice(0, 200));
+  // 성공: 200 + 세션 쿠키. hr-work 루트를 한번 더 태워 _hwtk 등 잔여 쿠키 수집.
+  if (res.ok) {
+    await followGets(HRWORK, jar, HRWORK).catch(() => {});
+    dbg("login ok, cookies", [...jar.keys()]);
+    return { ok: true, cookie: cookieHeader(jar) };
+  }
+
+  dbg("login fail body", JSON.stringify(data).slice(0, 200));
 
   // OTP 필요 추정 → 중간상태 보관 후 2단계 요청
   if (looksLikeOtp(res.status, data)) {
-    return { ok: false, otpRequired: true, pending: toPending(jar, search) };
+    return { ok: false, otpRequired: true, pending: toPending(jar, "") };
   }
 
   // 인증 실패 등: 상류 status/본문을 진단용으로 전달(비번은 포함 안 됨)
-  return {
-    ok: false,
-    error: "로그인 실패",
-    status: res.status,
-    detail: data,
-  };
+  return { ok: false, error: "로그인 실패", status: res.status, detail: data };
 }
 
 // ---- 2단계: OTP 코드 제출 ----
