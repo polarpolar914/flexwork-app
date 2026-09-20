@@ -1,12 +1,12 @@
 // Hiworks 온디맨드 자동 로그인 — 서버 전용.
-// 브라우저 SPA가 하던 OAuth 로그인을 서버가 그대로 재현한다:
-//   1) hr-work 접속 → 로그인 페이지로 리다이렉트(XSRF-TOKEN 등 쿠키 + loginUrl 쿼리 확보)
-//   2) POST auth-api.office.hiworks.com/oauth/authorization/login?<search> {id,password}
-//   3) (OTP 오피스면) POST .../oauth/authorization/otp?<search> {otp_code}
-//   4) 성공 응답의 302 체인을 따라가면 hr-work가 PHPSESSID/_hwtk 세팅 → 쿠키 수집
-// 수집한 쿠키 문자열을 근태 API 호출에 사용한다.
+// 브라우저가 하던 로그인을 서버가 그대로 재현한다:
+//   1) 로그인 페이지·hr-work 진입으로 초기 쿠키 시드 + h_officeid 세팅
+//   2) POST auth-api.office.hiworks.com/office-web/login {id, password, ip_security_level}
+//      → 성공 시 200 + Set-Cookie PHPSESSID(Domain=hiworks.com)
+//   3) hr-work 루트를 한번 더 태워 잔여 쿠키 수집
+// 수집한 쿠키 문자열(PHPSESSID 등)을 근태 API 호출에 사용한다.
 //
-// 비번을 저장/전송하는 민감 경로다. 절대 로그로 남기지 않는다(진단은 상류 status/헤더만).
+// 비번을 저장/전송하는 민감 경로다. 절대 로그로 남기지 않는다.
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
@@ -141,11 +141,6 @@ function looksLikeOtp(status: number, data: unknown): boolean {
   return /otp|one[_-]?time|2fa|need.*auth|multi_position/.test(s);
 }
 
-// 비밀 없는 단계별 진단 로그(비번/쿠키값 미포함, 상태/호스트/쿠키이름만).
-function dbg(...a: unknown[]) {
-  console.log("[hiworks-login]", ...a);
-}
-
 // ---- 1단계: id/password 로그인 ----
 export async function loginWithCreds(creds: {
   id: string;
@@ -162,7 +157,6 @@ export async function loginWithCreds(creds: {
   await followGets(HRWORK, jar, HRWORK).catch(() => {});
   // 로그인 POST는 어느 오피스인지 h_officeid 쿠키로 판단 → 없으면 도메인으로 채운다.
   if (officeDomain && !jar.get("h_officeid")) jar.set("h_officeid", officeDomain);
-  dbg("pre-login cookies", [...jar.keys()]);
 
   // 로그인 POST — 브라우저와 동일하게 office-web/login. 성공 시 200 + PHPSESSID(Domain=hiworks.com).
   // ip_security_level 기본 "1"(Js.DEFAULT). 오피스 설정 다르면 HIWORKS_IP_LEVEL 로 덮어씀.
@@ -178,7 +172,6 @@ export async function loginWithCreds(creds: {
     origin: LOGIN_ORIGIN,
     referer: LOGIN_ORIGIN + "/",
   });
-  dbg("login POST status", res.status, "cookies", [...jar.keys()]);
 
   const text = await res.text();
   let data: unknown;
@@ -191,11 +184,8 @@ export async function loginWithCreds(creds: {
   // 성공: 200 + 세션 쿠키. hr-work 루트를 한번 더 태워 _hwtk 등 잔여 쿠키 수집.
   if (res.ok) {
     await followGets(HRWORK, jar, HRWORK).catch(() => {});
-    dbg("login ok, cookies", [...jar.keys()]);
     return { ok: true, cookie: cookieHeader(jar) };
   }
-
-  dbg("login fail body", JSON.stringify(data).slice(0, 200));
 
   // OTP 필요 추정 → 중간상태 보관 후 2단계 요청
   if (looksLikeOtp(res.status, data)) {
