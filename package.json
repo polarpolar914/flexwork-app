@@ -6,7 +6,8 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "cli": "tsx src/cli/index.ts"
   },
   "dependencies": {
     "docx": "^9.0.2",
@@ -18,6 +19,10 @@
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0"
+  },
+  "bin": {
+    "flexwork": "bin/flexwork.cjs"
   }
 }

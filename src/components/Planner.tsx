@@ -24,43 +24,11 @@ import {
   parseWorkCalendar,
   shortDate,
   thisMonday,
-  toMinutes,
+  balanceToTarget,
+  changeMode,
   totalCreditMinutes,
   WEEKLY_TARGET_MIN,
 } from "@/lib/schedule";
-
-function fromMinutes(min: number): string {
-  const m = Math.max(0, Math.min(24 * 60, min));
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-// 모드 전환 시 기본 시간
-function defaultTimes(
-  mode: DayMode,
-  prev: DayEntry
-): { start: string; end: string } {
-  switch (mode) {
-    case "work":
-      return {
-        start: START_OPTIONS.includes(prev.start) ? prev.start : "09:00",
-        end: END_OPTIONS.includes(prev.end) ? prev.end : "18:00",
-      };
-    case "leave_pm": // 오전 근무 + 퇴근 13:00 고정
-      return {
-        start: START_OPTIONS.includes(prev.start) ? prev.start : "09:00",
-        end: PM_HALF_END,
-      };
-    case "leave_am": // 출근 14:00 고정 + 오후 근무
-      return {
-        start: AM_HALF_START,
-        end: END_OPTIONS.includes(prev.end) ? prev.end : "18:00",
-      };
-    default:
-      return { start: prev.start, end: prev.end };
-  }
-}
 
 const MODE_OPTIONS: DayMode[] = [
   "work",
@@ -206,37 +174,18 @@ export default function Planner({
   }
 
   function onModeChange(i: number, mode: DayMode) {
-    setDays((ds) =>
-      ds.map((d, idx) => {
-        if (idx !== i) return d;
-        const next = { ...d, mode, ...defaultTimes(mode, d) };
-        // 공휴일 선택 시 기본 문구는 항상 "공휴일", 그 외 모드는 비움(잔여 문구 제거)
-        next.holidayText = mode === "holiday" ? "공휴일" : "";
-        return next;
-      })
-    );
+    setDays((ds) => ds.map((d, idx) => (idx === i ? changeMode(d, mode) : d)));
   }
 
   // 잔여 시간을 마지막 근무일 종료시각으로 자동 배분 (주 40시간 맞춤)
-  function balanceToTarget() {
-    const idx = days.map((d) => d.mode).lastIndexOf("work");
-    if (idx < 0) {
-      flash("err", "근무일이 없어 자동 배분할 수 없습니다.");
+  function handleBalance() {
+    const r = balanceToTarget(days);
+    if (!r.ok) {
+      flash("err", r.error);
       return;
     }
-    const day = days[idx];
-    const need = WEEKLY_TARGET_MIN - total;
-    let newEnd = toMinutes(day.end) + need;
-    // 10분 단위로 반올림 + 17:00~19:00 범위로 제한
-    newEnd = Math.round(newEnd / 10) * 10;
-    const lo = toMinutes("17:00");
-    const hi = toMinutes("19:00");
-    if (newEnd < lo || newEnd > hi) {
-      flash("err", "한 근무일(17:00~19:00)로는 맞출 수 없습니다. 다른 날을 조정하세요.");
-      return;
-    }
-    setDay(idx, { end: fromMinutes(newEnd) });
-    flash("ok", `${day.weekday} 퇴근시각을 ${fromMinutes(newEnd)}로 조정했습니다.`);
+    setDays(r.days);
+    flash("ok", `${days[r.index].weekday} 퇴근시각을 ${r.end}로 조정했습니다.`);
   }
 
   function buildBody() {
@@ -470,7 +419,7 @@ export default function Planner({
       <div className="card no-print">
         <div className="card-head">
           <h2>요일별 근무 시간</h2>
-          <button onClick={balanceToTarget}>40시간 자동 맞춤</button>
+          <button onClick={handleBalance}>40시간 자동 맞춤</button>
         </div>
         <table className="sched">
           <thead>

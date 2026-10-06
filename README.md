@@ -64,6 +64,36 @@ npm run dev      # 개발: http://localhost:3000
 npm run build && npm start
 ```
 
+## CLI
+
+웹 없이 터미널에서 같은 기능을 쓸 수 있다. `.env.local` 과 `data/` 를 웹과 그대로 공유한다
+(앱 로그인 `APP_PASSWORD` 는 필요 없음).
+
+```bash
+npm run cli -- help        # 프로젝트 안에서 실행
+npm link                   # 한 번만: 어디서든 `flexwork` 명령으로 실행
+```
+
+| 명령 | 설명 |
+|---|---|
+| `flexwork week [옵션]` | 주간 신청서 작성/미리보기 (기본: 다음 주). 같은 주 저장본이 있으면 거기서 시작 |
+| `flexwork hiworks [--week this] [--raw]` | Hiworks 근태 조회 |
+| `flexwork list` / `show <id\|날짜>` | 제출 기록 목록 / 상세 |
+| `flexwork docx <id\|날짜> [-o 파일]` | 제출 기록을 Word 로 저장 |
+| `flexwork delete <id\|날짜> [--yes]` | 제출 기록 삭제 |
+| `flexwork settings` / `settings set name=홍길동 ...` | 기본 정보 보기 / 수정 |
+
+`week` 옵션: `--week this|next|YYYY-MM-DD`, `--day <요일>=<값>`(여러 번), `--hiworks`/`--no-hiworks`
+(이번 주면 기본 on), `--balance`(40시간 자동 맞춤), `--apply-date`, `--fresh`, `--save`, `--docx [파일|디렉터리]`.
+
+`--day` 값: `09:30-18:20`(근무) · `holiday[:문구]` · `leave`(연차 종일) · `pm[:출근]`(오후 반차) · `am[:퇴근]`(오전 반차).
+요일은 `월..금`, `mon..fri`, `1..5`.
+
+```bash
+flexwork week --day 수=holiday:개천절 --balance --save --docx ~/Desktop/
+flexwork week --week this --balance --docx
+```
+
 ## Hiworks 연동
 
 앱 로그인 후 **"이번 주"** 를 선택하면 Hiworks 근태에 자동 로그인해 그 주의 실제

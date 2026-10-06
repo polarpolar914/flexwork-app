@@ -206,6 +206,68 @@ export function buildDefaultDays(periodStart: string): DayEntry[] {
   }));
 }
 
+// 모드 전환 시 기본 시간
+export function defaultTimes(
+  mode: DayMode,
+  prev: DayEntry
+): { start: string; end: string } {
+  switch (mode) {
+    case "work":
+      return {
+        start: START_OPTIONS.includes(prev.start) ? prev.start : "09:00",
+        end: END_OPTIONS.includes(prev.end) ? prev.end : "18:00",
+      };
+    case "leave_pm": // 오전 근무 + 퇴근 13:00 고정
+      return {
+        start: START_OPTIONS.includes(prev.start) ? prev.start : "09:00",
+        end: PM_HALF_END,
+      };
+    case "leave_am": // 출근 14:00 고정 + 오후 근무
+      return {
+        start: AM_HALF_START,
+        end: END_OPTIONS.includes(prev.end) ? prev.end : "18:00",
+      };
+    default:
+      return { start: prev.start, end: prev.end };
+  }
+}
+
+// 모드 변경 적용. 공휴일 기본 문구는 "공휴일", 그 외 모드는 문구 비움(잔여 문구 제거)
+export function changeMode(day: DayEntry, mode: DayMode): DayEntry {
+  return {
+    ...day,
+    mode,
+    ...defaultTimes(mode, day),
+    holidayText: mode === "holiday" ? "공휴일" : "",
+  };
+}
+
+// 잔여 시간을 마지막 근무일 종료시각으로 자동 배분 (주 40시간 맞춤)
+export type BalanceResult =
+  | { ok: true; index: number; end: string; days: DayEntry[] }
+  | { ok: false; error: string };
+
+export function balanceToTarget(days: DayEntry[]): BalanceResult {
+  const idx = days.map((d) => d.mode).lastIndexOf("work");
+  if (idx < 0) return { ok: false, error: "근무일이 없어 자동 배분할 수 없습니다." };
+  const need = WEEKLY_TARGET_MIN - totalCreditMinutes(days);
+  // 10분 단위로 반올림 + 17:00~19:00 범위로 제한
+  const newEnd = Math.round((toMinutes(days[idx].end) + need) / 10) * 10;
+  if (newEnd < toMinutes("17:00") || newEnd > toMinutes("19:00")) {
+    return {
+      ok: false,
+      error: "한 근무일(17:00~19:00)로는 맞출 수 없습니다. 다른 날을 조정하세요.",
+    };
+  }
+  const end = hmFromMinutes(newEnd);
+  return {
+    ok: true,
+    index: idx,
+    end,
+    days: days.map((d, i) => (i === idx ? { ...d, end } : d)),
+  };
+}
+
 // ---- Hiworks 근태 → 요일별 시간 자동 반영 ----
 
 // Hiworks 응답 1일치(파싱 결과). start/end는 "HH:MM" 또는 미기록 시 null.
