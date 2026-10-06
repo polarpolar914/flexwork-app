@@ -333,38 +333,55 @@ function clampSnap(hm: string | null, lo: number, hi: number): string | null {
   return hmFromMinutes(Math.max(lo, Math.min(hi, m)));
 }
 
+// date의 HH:MM 시각이 now 기준으로 이미 지났는지 (로컬 시간대)
+function hasPassed(date: string, hm: string, now: Date): boolean {
+  return now.getTime() >= new Date(`${date}T${hm}:00`).getTime();
+}
+
 // Hiworks 근무데이터로 요일별 시간을 자동 반영.
-// - 출근: 09:00~10:00(10분) 밖이면 버리고 10:00
-// - 퇴근: 17:00~19:00(10분) 밖이면 버리고 17:00
-// - 금요일 퇴근이 (미기록/범위 밖)이면 → 주 40시간을 채우는 10분단위 시각(17:00~19:00)으로
+// - 출근: 기록이 있으면 09:00~10:00(10분)으로 클램프. 미기록이면
+//         출근 구간(~10:00)이 아직 안 지났으면 계획값 유지, 지났으면 10:00
+// - 퇴근: 기록이 17:00~19:00(10분) 안이면 그 값. 아니면
+//         퇴근 구간(~19:00)이 아직 안 지났으면 계획값 유지, 지났으면 17:00
+// - 그 주 마지막 근무일 퇴근이 (미기록/범위 밖)이면 → 시점과 무관하게
+//   주 40시간을 채우는 10분단위 시각(17:00~19:00)으로
 // 근무일(work)만 대상. 공휴일/연차 등 사용자가 지정한 모드는 그대로 둔다.
-export function fillFromHiworks(days: DayEntry[], rows: WorkDay[]): DayEntry[] {
+// days 는 현재 계획(저장된 신청서 또는 기본 일정)이다.
+export function fillFromHiworks(
+  days: DayEntry[],
+  rows: WorkDay[],
+  now: Date = new Date()
+): DayEntry[] {
   const byDate = new Map(rows.map((r) => [r.date, r]));
-  const FRI = 4;
 
   const out: DayEntry[] = days.map((d) => {
     if (d.mode !== "work") return { ...d };
     const row = byDate.get(d.date);
-    // 출근: 9시 전이면 9:00, 10시 후면 10:00으로 클램프(버리지 않음). 미기록만 10:00 기본.
+    // 출근: 9시 전이면 9:00, 10시 후면 10:00으로 클램프(버리지 않음).
     const vs = clampSnap(row?.start ?? null, START_MIN, START_MAX);
-    // 퇴근: 17~19시 밖이면 버리고 17:00 기본. 금요일 미기록은 아래서 40h로 채움.
+    // 퇴근: 17~19시 밖이면 버림. 마지막 근무일 미기록은 아래서 40h로 채움.
     const ve = validSnap(row?.end ?? null, END_MIN, END_MAX);
-    return { ...d, start: vs ?? "10:00", end: ve ?? "17:00" };
+    return {
+      ...d,
+      start: vs ?? (hasPassed(d.date, "10:00", now) ? "10:00" : d.start),
+      end: ve ?? (hasPassed(d.date, "19:00", now) ? "17:00" : d.end),
+    };
   });
 
-  // 금요일 퇴근이 유효하지 않았으면(기본 17:00으로 채워졌으면) 40시간 맞춤으로 덮어씀
-  const friRow = byDate.get(days[FRI]?.date);
-  const friEndValid = validSnap(friRow?.end ?? null, END_MIN, END_MAX) != null;
-  if (days[FRI]?.mode === "work" && !friEndValid) {
+  // 마지막 근무일 퇴근이 유효하지 않았으면 40시간 맞춤으로 덮어씀
+  const last = days.map((d) => d.mode).lastIndexOf("work");
+  const lastRow = last >= 0 ? byDate.get(days[last].date) : undefined;
+  const lastEndValid = validSnap(lastRow?.end ?? null, END_MIN, END_MAX) != null;
+  if (last >= 0 && !lastEndValid) {
     const others = out.reduce(
-      (s, d, i) => (i === FRI ? s : s + creditMinutes(d)),
+      (s, d, i) => (i === last ? s : s + creditMinutes(d)),
       0
     );
     const need = WEEKLY_TARGET_MIN - others;
-    let end = toMinutes(out[FRI].start) + LUNCH_MIN + need;
+    let end = toMinutes(out[last].start) + LUNCH_MIN + need;
     end = Math.round(end / 10) * 10;
     end = Math.max(END_MIN, Math.min(END_MAX, end));
-    out[FRI] = { ...out[FRI], end: hmFromMinutes(end) };
+    out[last] = { ...out[last], end: hmFromMinutes(end) };
   }
 
   return out;
