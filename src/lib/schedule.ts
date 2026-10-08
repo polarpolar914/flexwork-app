@@ -15,13 +15,7 @@ export const DAY_MODE_LABEL: Record<DayMode, string> = {
   leave_am: "연차(오전)",
 };
 
-export const WEEKDAY_LABELS = [
-  "월요일",
-  "화요일",
-  "수요일",
-  "목요일",
-  "금요일",
-];
+export const WEEKDAY_LABELS = ["월요일", "화요일", "수요일", "목요일", "금요일"];
 
 export interface DayEntry {
   date: string; // ISO yyyy-mm-dd
@@ -37,11 +31,7 @@ export const PM_HALF_END = "13:00"; // 오후 반차: 오전만 근무 → 퇴�
 export const AM_HALF_START = "14:00"; // 오전 반차: 오후만 근무 → 출근 14:00 고정
 
 // 선택 가능한 시각 옵션 (10분 단위)
-export function genTimes(
-  startHM: string,
-  endHM: string,
-  stepMin: number,
-): string[] {
+export function genTimes(startHM: string, endHM: string, stepMin: number): string[] {
   const out: string[] = [];
   let t = toMinutes(startHM);
   const end = toMinutes(endHM);
@@ -219,7 +209,7 @@ export function buildDefaultDays(periodStart: string): DayEntry[] {
 // 모드 전환 시 기본 시간
 export function defaultTimes(
   mode: DayMode,
-  prev: DayEntry,
+  prev: DayEntry
 ): { start: string; end: string } {
   switch (mode) {
     case "work":
@@ -259,16 +249,14 @@ export type BalanceResult =
 
 export function balanceToTarget(days: DayEntry[]): BalanceResult {
   const idx = days.map((d) => d.mode).lastIndexOf("work");
-  if (idx < 0)
-    return { ok: false, error: "근무일이 없어 자동 배분할 수 없습니다." };
+  if (idx < 0) return { ok: false, error: "근무일이 없어 자동 배분할 수 없습니다." };
   const need = WEEKLY_TARGET_MIN - totalCreditMinutes(days);
   // 10분 단위로 반올림 + 17:00~19:00 범위로 제한
   const newEnd = Math.round((toMinutes(days[idx].end) + need) / 10) * 10;
   if (newEnd < toMinutes("17:00") || newEnd > toMinutes("19:00")) {
     return {
       ok: false,
-      error:
-        "한 근무일(17:00~19:00)로는 맞출 수 없습니다. 다른 날을 조정하세요.",
+      error: "한 근무일(17:00~19:00)로는 맞출 수 없습니다. 다른 날을 조정하세요.",
     };
   }
   const end = hmFromMinutes(newEnd);
@@ -362,7 +350,7 @@ function hasPassed(date: string, hm: string, now: Date): boolean {
 export function fillFromHiworks(
   days: DayEntry[],
   rows: WorkDay[],
-  now: Date = new Date(),
+  now: Date = new Date()
 ): DayEntry[] {
   const byDate = new Map(rows.map((r) => [r.date, r]));
 
@@ -383,12 +371,11 @@ export function fillFromHiworks(
   // 마지막 근무일 퇴근이 유효하지 않았으면 40시간 맞춤으로 덮어씀
   const last = days.map((d) => d.mode).lastIndexOf("work");
   const lastRow = last >= 0 ? byDate.get(days[last].date) : undefined;
-  const lastEndValid =
-    validSnap(lastRow?.end ?? null, END_MIN, END_MAX) != null;
+  const lastEndValid = validSnap(lastRow?.end ?? null, END_MIN, END_MAX) != null;
   if (last >= 0 && !lastEndValid) {
     const others = out.reduce(
       (s, d, i) => (i === last ? s : s + creditMinutes(d)),
-      0,
+      0
     );
     const need = WEEKLY_TARGET_MIN - others;
     let end = toMinutes(out[last].start) + LUNCH_MIN + need;
