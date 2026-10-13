@@ -143,7 +143,7 @@ export async function buildDocx(entry: Entry): Promise<Buffer> {
     children: [
       para("위 신청(변경)을 허가함", "left"),
       para(""),
-      para("2026년    월     일"),
+      para("2026년        월        일"),
       para(""),
       para(`${s.company} 대표의(인)`),
     ],
