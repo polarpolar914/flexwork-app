@@ -6,6 +6,7 @@ import {
   formatHM,
   hoursCellText,
   periodDatePart,
+  permitDatePart,
   timeCellText,
   totalCreditMinutes,
 } from "@/lib/schedule";
@@ -102,7 +103,7 @@ export default function FormView({
           <tr>
             <td className="sign-permit" colSpan={6}>
               <div className="permit-left">위 신청(변경)을 허가함</div>
-              <div className="permit-center" style={{ whiteSpace: "pre" }}>{"2026년        월        일"}</div>
+              <div className="permit-center" style={{ whiteSpace: "pre" }}>{permitDatePart(applyDate)}</div>
               <div className="permit-center">{settings.company} 대표의(인)</div>
             </td>
           </tr>
