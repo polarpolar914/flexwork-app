@@ -176,6 +176,14 @@ export function applyDatePart(iso: string): string {
   return `${d.getFullYear()}년   ${d.getMonth() + 1}월  ${d.getDate()}일`;
 }
 
+// 허가란: "2026년        월        일" (년 뒤 공백8, 월 뒤 공백8)
+// 월·일은 대표가 직접 적는 칸이라 비워두고, 연도만 신청일 기준으로 채운다.
+// (허가는 신청과 같은 해에 이뤄지므로 신청일을 따라가면 같은 장 안에서 연도가 어긋나지 않는다)
+export function permitDatePart(applyDateIso: string): string {
+  const d = new Date(applyDateIso + "T00:00:00");
+  return `${d.getFullYear()}년        월        일`;
+}
+
 export function periodText(start: string, end: string): string {
   return `${periodDatePart(start)}~${periodDatePart(end)}`;
 }
