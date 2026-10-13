@@ -114,7 +114,7 @@ export function formatHM(min: number): string {
 export function timeCellText(day: DayEntry): string {
   switch (day.mode) {
     case "work":
-      return `${day.start} ~${day.end}`;
+      return `${day.start} ~ ${day.end}`;
     case "holiday":
       return day.holidayText && day.holidayText.trim()
         ? day.holidayText.trim()
@@ -122,9 +122,9 @@ export function timeCellText(day: DayEntry): string {
     case "leave_full":
       return "휴가";
     case "leave_pm":
-      return `${day.start} ~${day.end}, 오후 반차`;
+      return `${day.start} ~ ${day.end}, 오후 반차`;
     case "leave_am":
-      return `${day.start} ~${day.end}, 오전 반차`;
+      return `${day.start} ~ ${day.end}, 오전 반차`;
   }
 }
 
