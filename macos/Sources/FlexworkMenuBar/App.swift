@@ -1,220 +1,272 @@
-import AppKit
-import WebKit
+import SwiftUI
 
 @main
-struct FlexworkMenuBar {
-    @MainActor static func main() {
-        let app = NSApplication.shared
-        let delegate = AppDelegate()
-        app.delegate = delegate
-        app.setActivationPolicy(.accessory)
-        withExtendedLifetime(delegate) { app.run() }
+struct FlexworkMenuBar: App {
+    @StateObject private var store = MenuStore()
+
+    var body: some Scene {
+        MenuBarExtra {
+            MenuPanel(store: store)
+        } label: {
+            Label("유연근무", systemImage: "calendar.badge.clock")
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
-@MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate,
-    WKDownloadDelegate, WKScriptMessageHandler {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let webView = WKWebView()
-    private let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 680),
-                                  styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                                  backing: .buffered, defer: false)
-    private var baseURL: URL {
-        ServerAddress.parse(UserDefaults.standard.string(forKey: "serverURL") ?? "") ?? ServerAddress.fallback
-    }
-    // WebKit requires a nonexistent destination. Stage downloads before showing a save panel.
-    private var downloads: [ObjectIdentifier: (file: URL, name: String)] = [:]
+struct MenuPanel: View {
+    @ObservedObject var store: MenuStore
+    @State private var password = ""
+    @State private var otp = ""
+    @State private var confirmation: Confirmation?
+    @State private var expandedRecord: String?
+    private let modes = [("work", "근무"), ("holiday", "공휴일"), ("leave_full", "종일 연차"), ("leave_pm", "오후 반차"), ("leave_am", "오전 반차")]
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem.button?.image = NSImage(systemSymbolName: "calendar.badge.clock", accessibilityDescription: "유연근무")
-        statusItem.button?.toolTip = "유연근무제 신청서"
-        let menu = NSMenu()
-        [item("신청서 열기", #selector(openPlanner)), item("제출 기록", #selector(openHistory)),
-         item("현재 화면 새로고침", #selector(reload)), .separator(),
-         item("브라우저에서 열기", #selector(openBrowser)), item("서버 주소 설정…", #selector(configure)),
-         .separator(), item("Flexwork 종료", #selector(quit))].forEach { menu.addItem($0) }
-        statusItem.menu = menu
-        // Standard responder-chain shortcuts remain available without a Dock icon.
-        let mainMenu = NSMenu()
-        let appMenu = NSMenu()
-        let appItem = NSMenuItem(title: "Flexwork", action: nil, keyEquivalent: "")
-        appItem.submenu = appMenu
-        let quitItem = item("Flexwork 종료", #selector(quit))
-        quitItem.keyEquivalent = "q"
-        appMenu.addItem(quitItem)
-        mainMenu.addItem(appItem)
-        let editMenu = NSMenu(title: "편집")
-        let editItem = NSMenuItem(title: "편집", action: nil, keyEquivalent: "")
-        editItem.submenu = editMenu
-        [("실행 취소", "undo:", "z"), ("잘라내기", "cut:", "x"),
-         ("복사", "copy:", "c"), ("붙여넣기", "paste:", "v"),
-         ("전체 선택", "selectAll:", "a")].forEach { title, selector, key in
-            editMenu.addItem(NSMenuItem(title: title, action: NSSelectorFromString(selector), keyEquivalent: key))
+    struct Confirmation: Identifiable {
+        let id = UUID()
+        let title: String
+        let detail: String
+        let action: () -> Void
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("유연근무", systemImage: "calendar.badge.clock").font(.title2.bold())
+                Spacer()
+                if store.busy { ProgressView().controlSize(.small) }
+                Menu {
+                    Button("서버 설정") { store.tab = "settings" }
+                    if store.loggedIn {
+                        Button("로그아웃") { confirm("로그아웃할까요?", "저장하지 않은 입력이 사라집니다.") { store.logout() } }
+                    }
+                    Divider()
+                    Button("종료") { confirm("Flexwork를 종료할까요?", "저장하지 않은 입력이 사라집니다.") { NSApp.terminate(nil) } }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .menuStyle(.borderlessButton).fixedSize()
+                .accessibilityLabel("앱 메뉴")
+            }
+            if store.loggedIn {
+                Picker("화면", selection: Binding(get: { store.tab }, set: { value in
+                    if value == "history" { store.loadRecords() } else { store.tab = value }
+                })) {
+                    Text("주간 일정").tag("plan")
+                    Text("제출 기록").tag("history")
+                    Text("설정").tag("settings")
+                }.pickerStyle(.segmented)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    if store.tab == "settings" { settings }
+                    else if !store.loggedIn { login }
+                    else if store.tab == "history" { history }
+                    else if let plan = store.plan { planner(plan) }
+                    else {
+                        Text("일정을 불러오지 못했습니다.").foregroundStyle(.secondary)
+                        Button("다시 불러오기") { store.refresh() }
+                    }
+                }.padding(.vertical, 2)
+            }
+            Divider()
+            Text(store.notice)
+                .font(.caption)
+                .foregroundStyle(store.isError ? Color.red : Color.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("상태: \(store.notice)")
         }
-        mainMenu.addItem(editItem)
-        NSApp.mainMenu = mainMenu
-        window.title = "유연근무제 신청서"
-        window.minSize = NSSize(width: 760, height: 500)
-        window.isReleasedWhenClosed = false
-        window.setFrameAutosaveName("FlexworkWindow")
-        window.center()
-        window.contentView = webView
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-        webView.configuration.userContentController.add(self, name: "print")
-        webView.configuration.userContentController.addUserScript(WKUserScript(
-            source: "window.print = () => window.webkit.messageHandlers.print.postMessage(null);",
-            injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        // Launch quietly in the menu bar; opening the window does not discard unsaved edits.
-    }
-
-    private func item(_ title: String, _ action: Selector) -> NSMenuItem {
-        let result = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        result.target = self
-        return result
-    }
-
-    private func show() {
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    @objc private func openPlanner() {
-        if webView.url == nil { webView.load(URLRequest(url: baseURL)) }
-        show()
-    }
-
-    @objc private func openHistory() {
-        if webView.url?.path != "/history" {
-            guard confirm("제출 기록으로 이동할까요?", detail: "저장하지 않은 신청서 변경 사항은 사라집니다.") else { return }
-            webView.load(URLRequest(url: baseURL.appendingPathComponent("history")))
-        }
-        show()
-    }
-
-    @objc private func reload() {
-        guard confirm("새로고침할까요?", detail: "저장하지 않은 변경 사항은 사라집니다.") else { return }
-        webView.load(URLRequest(url: webView.url ?? baseURL))
-        show()
-    }
-
-    @objc private func openBrowser() {
-        NSWorkspace.shared.open(webView.url.flatMap { ServerAddress.isSameOrigin($0, as: baseURL) ? $0 : nil } ?? baseURL)
-    }
-
-    @objc private func quit() { NSApp.terminate(nil) }
-
-    @objc private func configure() {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Flexwork 서버 주소"
-        alert.informativeText = "기본값: http://localhost:3000\n서버는 별도로 실행해야 합니다. 주소를 변경하면 저장하지 않은 입력이 사라집니다."
-        let field = NSTextField(string: baseURL.absoluteString)
-        field.frame = NSRect(x: 0, y: 0, width: 360, height: 24)
-        alert.accessoryView = field
-        alert.addButton(withTitle: "저장")
-        alert.addButton(withTitle: "취소")
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard let url = ServerAddress.parse(field.stringValue) else {
-            report("올바른 서버 주소를 입력하세요.", "로컬 HTTP 또는 HTTPS 주소만 지원합니다. 경로·계정·쿼리는 포함하지 마세요.")
-            return
-        }
-        UserDefaults.standard.set(url.absoluteString, forKey: "serverURL")
-        webView.load(URLRequest(url: url))
-        show()
-    }
-
-    private func report(_ title: String, _ detail: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = detail
-        alert.runModal()
-    }
-
-    private func confirm(_ title: String, detail: String = "") -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = detail
-        alert.addButton(withTitle: "확인")
-        alert.addButton(withTitle: "취소")
-        return alert.runModal() == .alertFirstButtonReturn
-    }
-
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = action.request.url else { decisionHandler(.cancel); return }
-        if ServerAddress.isSameOrigin(url, as: baseURL) || url.scheme == "blob" {
-            decisionHandler(action.shouldPerformDownload ? .download : .allow)
-        } else {
-            decisionHandler(.cancel)
-            if ["https", "http"].contains(url.scheme) { NSWorkspace.shared.open(url) }
+        .padding(18)
+        .frame(width: 540, height: 650)
+        .disabled(store.busy)
+        .alert(item: $confirmation) { item in
+            Alert(title: Text(item.title), message: Text(item.detail),
+                  primaryButton: .default(Text("확인"), action: item.action), secondaryButton: .cancel(Text("취소")))
         }
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
-                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-        decisionHandler(response.canShowMIMEType ? .allow : .download)
+    private func confirm(_ title: String, _ detail: String, action: @escaping () -> Void) {
+        confirmation = Confirmation(title: title, detail: detail, action: action)
     }
 
-    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        download.delegate = self
+    private var login: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("메뉴 막대에서 한 주를 준비하세요").font(.headline)
+            Text("근무 시간 조정부터 신청서 저장까지 이 패널에서 처리합니다.").foregroundStyle(.secondary)
+            Text(store.server).font(.caption).textSelection(.enabled)
+            SecureField("앱 비밀번호", text: $password).onSubmit { signIn() }
+            Button("로그인", action: signIn).buttonStyle(.borderedProminent).disabled(password.isEmpty)
+            Button("서버 주소 변경") { store.tab = "settings" }
+            Text("기존 Flexwork 서버가 실행 중이어야 합니다. 비밀번호는 저장하지 않습니다.").font(.caption).foregroundStyle(.secondary)
+        }.textFieldStyle(.roundedBorder)
     }
 
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = self
+    private func signIn() {
+        store.login(password)
+        password = ""
     }
 
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
-                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        downloads[ObjectIdentifier(download)] = (file, (suggestedFilename as NSString).lastPathComponent)
-        completionHandler(file)
-    }
-
-    func downloadDidFinish(_ download: WKDownload) {
-        guard let entry = downloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        defer { try? FileManager.default.removeItem(at: entry.file) }
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = entry.name
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
-        do {
-            // Atomic write also supports replacement explicitly approved by NSSavePanel.
-            try Data(contentsOf: entry.file).write(to: destination, options: .atomic)
-        } catch { report("파일 저장 실패", error.localizedDescription) }
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        if let entry = downloads.removeValue(forKey: ObjectIdentifier(download)) {
-            try? FileManager.default.removeItem(at: entry.file)
+    private func planner(_ plan: Plan) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("주 선택", selection: Binding(get: { store.week }, set: { store.selectWeek($0); otp = "" })) {
+                Text("이번 주").tag("this")
+                Text("다음 주").tag("next")
+            }.pickerStyle(.segmented)
+            HStack {
+                Text("\(plan.periodStart) – \(plan.periodEnd)").font(.subheadline.bold())
+                Spacer()
+                Text(plan.saved ? "저장됨" : "미저장").font(.caption).foregroundStyle(plan.saved ? Color.green : Color.orange)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(plan.totalLabel).font(.title2.bold()).monospacedDigit()
+                    Text("/ 40시간").foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: plan.total == 2400 ? "checkmark.circle.fill" : "exclamationmark.circle")
+                        .foregroundStyle(plan.total == 2400 ? Color.green : Color.orange)
+                }
+                ProgressView(value: Double(min(plan.total, 2400)), total: 2400)
+                Text(plan.total == 2400 ? "주간 인정 시간을 채웠습니다." : "\(abs(plan.total - 2400))분 \(plan.total < 2400 ? "부족" : "초과")")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(12).background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            ForEach(Array(plan.days.enumerated()), id: \.element.id) { index, day in
+                dayRow(index, day, plan)
+                if index < 4 { Divider() }
+            }
+            HStack {
+                Button("40시간 맞춤") { store.transform("balance") }
+                if store.week == "this" {
+                    Button("Hiworks 불러오기") { store.importHiworks("") }
+                }
+                Spacer()
+                Button { confirm("서버에서 다시 불러올까요?", "현재 주의 저장하지 않은 입력이 사라집니다.") { store.refresh() } }
+                label: { Image(systemName: "arrow.clockwise") }.help("서버에서 다시 불러오기").accessibilityLabel("서버에서 다시 불러오기")
+            }
+            if store.needsOTP {
+                HStack {
+                    SecureField("Hiworks OTP", text: $otp)
+                    Button("OTP 확인") { store.importHiworks(otp); otp = "" }.disabled(otp.isEmpty)
+                }
+            }
+            HStack {
+                Text("신청일").font(.caption)
+                DatePicker("신청일", selection: Binding(get: {
+                    Self.dateFormatter.date(from: store.plan?.applyDate ?? "") ?? Date()
+                }, set: { store.plan?.applyDate = Self.dateFormatter.string(from: $0); store.plan?.saved = false }), displayedComponents: .date)
+                    .labelsHidden()
+                Spacer()
+                Button("인쇄") { store.printPlan() }
+                Button("Word 저장") { store.export() }
+                Button("신청서 저장") { store.save() }.buttonStyle(.borderedProminent)
+            }
+            Text("반차·연차·공휴일은 8시간 인정 · 인쇄창에서 프린터 또는 PDF 저장을 선택하세요.")
+                .font(.caption2).foregroundStyle(.secondary)
         }
-        report("다운로드 실패", error.localizedDescription)
     }
 
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        guard (error as NSError).code != NSURLErrorCancelled else { return }
-        report("서버에 연결할 수 없습니다.", "서버에서 npm run dev 또는 npm start를 실행하고 메뉴의 새로고침을 선택하세요.\n서버 주소: \(baseURL)\n\(error.localizedDescription)")
+    private func dayRow(_ index: Int, _ day: WorkDay, _ plan: Plan) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(String(day.weekday.prefix(1))).font(.headline)
+                    Text(String(day.date.suffix(5))).font(.caption2).foregroundStyle(.secondary)
+                }.frame(width: 40, alignment: .leading)
+                Picker("\(day.weekday) 구분", selection: Binding(get: { day.mode }, set: { store.transform("mode", extra: ["index": index, "mode": $0]) })) {
+                    ForEach(modes, id: \.0) { mode in Text(mode.1).tag(mode.0) }
+                }.labelsHidden().frame(width: 110)
+                if ["work", "leave_pm", "leave_am"].contains(day.mode) {
+                    if day.mode == "leave_am" { Text("14:00").frame(width: 74) }
+                    else { timePicker(index, day, \.start, plan.startOptions, "출근") }
+                    Text("–").foregroundStyle(.secondary)
+                    if day.mode == "leave_pm" { Text("13:00").frame(width: 74) }
+                    else { timePicker(index, day, \.end, plan.endOptions, "퇴근") }
+                } else {
+                    Text(day.mode == "holiday" ? "공휴일" : "종일 휴가").foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Text(String(format: "%d:%02d", day.credit / 60, day.credit % 60)).font(.caption.monospacedDigit())
+            }
+            if day.mode == "holiday" {
+                TextField("공휴일 이름", text: Binding(get: { day.holidayText ?? "" }, set: { value in store.editDay(index) { $0.holidayText = value } }))
+                    .textFieldStyle(.roundedBorder).padding(.leading, 50)
+            }
+        }
     }
 
-    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
-        completionHandler(confirm(message))
+    private func timePicker(_ index: Int, _ day: WorkDay, _ key: WritableKeyPath<WorkDay, String>, _ options: [String], _ label: String) -> some View {
+        Picker("\(day.weekday) \(label)", selection: Binding(get: { day[keyPath: key] }, set: { value in store.editDay(index) { $0[keyPath: key] = value } })) {
+            ForEach(options, id: \.self) { Text($0).tag($0) }
+        }.labelsHidden().frame(width: 80)
     }
 
-    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        report(message, "")
-        completionHandler()
+    private var history: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("저장된 신청서 \(store.records.count)건").font(.headline)
+                Spacer()
+                Button("새로고침") { store.loadRecords() }
+            }
+            if store.records.isEmpty { Text("아직 저장된 신청서가 없습니다.").foregroundStyle(.secondary) }
+            ForEach(store.records) { record in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\(record.periodStart) – \(record.periodEnd)").font(.headline)
+                    Text("\(record.settings.name) · 신청일 \(record.applyDate)").font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button(expandedRecord == record.id ? "접기" : "상세") { expandedRecord = expandedRecord == record.id ? nil : record.id }
+                        Button("인쇄") { store.printPlan(record) }
+                        Button("Word 저장") { store.export(record) }
+                        Spacer()
+                        Button("삭제", role: .destructive) {
+                            confirm("신청서를 삭제할까요?", "\(record.periodStart) 주 기록을 삭제합니다. 되돌릴 수 없습니다.") { store.deleteRecord(record) }
+                        }
+                    }
+                    if expandedRecord == record.id {
+                        ForEach(record.days) { day in
+                            HStack {
+                                Text(day.weekday)
+                                Text(modes.first { $0.0 == day.mode }?.1 ?? day.mode)
+                                Spacer()
+                                Text(day.mode == "holiday" ? day.holidayText ?? "공휴일" : day.mode == "leave_full" ? "휴가" : "\(day.start) – \(day.end)")
+                            }.font(.caption)
+                        }
+                    }
+                }.padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
     }
 
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "print", message.frameInfo.isMainFrame,
-              let url = message.frameInfo.request.url, ServerAddress.isSameOrigin(url, as: baseURL) else { return }
-        let operation = webView.printOperation(with: NSPrintInfo.shared)
-        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    private var settings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("서버 연결").font(.headline)
+            TextField("http://localhost:3000", text: $store.server)
+            Button("서버 주소 적용") {
+                confirm("서버를 변경할까요?", "로그아웃되며 저장하지 않은 입력이 사라집니다.") { store.configureServer() }
+            }
+            if !store.loggedIn { Button("로그인으로 돌아가기") { store.tab = "plan" } }
+            if store.plan != nil {
+                Divider()
+                Text("신청서 기본 정보").font(.headline)
+                profileField("업체명", \.company)
+                profileField("부서", \.department)
+                profileField("생년월일", \.birth)
+                profileField("이름", \.name)
+                profileField("공동근무시간", \.coreTime)
+                Text("현재 주 신청서에 적용됩니다. 신청서를 저장하면 다음 신청서의 기본값으로 기억합니다.").font(.caption).foregroundStyle(.secondary)
+            }
+            Text("비밀번호와 세션은 앱 종료 시 지워집니다. 원격 서버에는 HTTPS가 필요합니다.").font(.caption).foregroundStyle(.secondary)
+        }.textFieldStyle(.roundedBorder)
     }
+
+    private func profileField(_ title: String, _ key: WritableKeyPath<Profile, String>) -> some View {
+        HStack {
+            Text(title).frame(width: 88, alignment: .leading)
+            TextField(title, text: Binding(get: { store.plan?.settings[keyPath: key] ?? "" }, set: { store.editProfile(key, value: $0) }))
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
