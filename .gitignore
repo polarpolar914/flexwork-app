@@ -7,3 +7,6 @@ data/
 next-env.d.ts
 .DS_Store
 logs/
+
+macos/.build/
+dist/

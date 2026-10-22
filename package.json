@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "cli": "tsx src/cli/index.ts"
+    "cli": "tsx src/cli/index.ts",
+    "macos:build": "sh scripts/build-macos.sh",
+    "macos:test": "sh scripts/test-macos.sh",
+    "test:menu-bar": "node --import tsx tests/menu-bar.test.ts",
+    "macos:open": "open dist/Flexwork.app"
   },
   "dependencies": {
     "docx": "^9.0.2",
