@@ -30,7 +30,7 @@ struct MenuPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("유연근무", systemImage: "calendar.badge.clock").font(.title2.bold())
                 Spacer()
@@ -56,7 +56,7 @@ struct MenuPanel: View {
                 }.pickerStyle(.segmented)
             }
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     if store.tab == "settings" { settings }
                     else if !store.loggedIn { login }
                     else if store.tab == "history" { history }
@@ -75,8 +75,8 @@ struct MenuPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel("상태: \(store.notice)")
         }
-        .padding(18)
-        .frame(width: 540, height: 650)
+        .padding(14)
+        .frame(width: 540, height: 620)
         .disabled(store.busy)
         .alert(item: $confirmation) { item in
             Alert(title: Text(item.title), message: Text(item.detail),
@@ -106,7 +106,7 @@ struct MenuPanel: View {
     }
 
     private func planner(_ plan: Plan) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Picker("주 선택", selection: Binding(get: { store.week }, set: { store.selectWeek($0); otp = "" })) {
                 Text("이번 주").tag("this")
                 Text("다음 주").tag("next")
@@ -127,10 +127,12 @@ struct MenuPanel: View {
                 ProgressView(value: Double(min(plan.total, 2400)), total: 2400)
                 Text(plan.total == 2400 ? "주간 인정 시간을 채웠습니다." : "\(abs(plan.total - 2400))분 \(plan.total < 2400 ? "부족" : "초과")")
                     .font(.caption).foregroundStyle(.secondary)
-            }.padding(12).background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-            ForEach(Array(plan.days.enumerated()), id: \.element.id) { index, day in
-                dayRow(index, day, plan)
-                if index < 4 { Divider() }
+            }.padding(10).background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(plan.days.enumerated()), id: \.element.id) { index, day in
+                    dayRow(index, day, plan)
+                    if index < 4 { Divider() }
+                }
             }
             HStack {
                 Button("40시간 맞춤") { store.transform("balance") }
