@@ -1,11 +1,16 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { DEFAULT_SETTINGS, type Entry, type Settings } from "./schedule";
+import {
+  validTemplateDays,
+  type Template, type TemplateDay, type TemplateStore,
+} from "@/features/menu-bar/model/template";
 
 // 프로젝트 내 간단한 파일 DB (data/ 디렉터리). 단일 계정이므로 사용자 테이블은 없다.
 const DATA_DIR = path.join(process.cwd(), "data");
 const ENTRIES_FILE = path.join(DATA_DIR, "entries.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+const TEMPLATES_FILE = path.join(DATA_DIR, "templates.json");
 
 // 단일 계정의 고정 소유자 id. 제출 기록에 이 값으로 태그해 둔다.
 export const LOCAL_USER = "local";
@@ -121,6 +126,61 @@ export async function saveSettings(s: unknown): Promise<Settings> {
     const current = cleanSettings(await readJson<unknown>(SETTINGS_FILE, {}));
     const next = cleanSettings(s, current);
     await writeJson(SETTINGS_FILE, next);
+    return next;
+  });
+}
+
+// ---- 주간 근무 패턴 템플릿 : 단일 templates.json ----
+
+export async function getTemplates(): Promise<TemplateStore> {
+  const raw = await readJson<Partial<TemplateStore>>(TEMPLATES_FILE, {});
+  const items = (Array.isArray(raw.items) ? raw.items : []).filter(
+    (t): t is Template =>
+      Boolean(t) && typeof t.id === "string" && typeof t.name === "string" &&
+      validTemplateDays(t.days)
+  );
+  const lastUsedId =
+    typeof raw.lastUsedId === "string" && items.some((t) => t.id === raw.lastUsedId)
+      ? raw.lastUsedId
+      : null;
+  return { items, lastUsedId };
+}
+
+// 저장하면 그 템플릿이 곧바로 기본값(lastUsed)이 된다. 방금 만든 걸
+// 다시 골라야 적용되는 건 번거롭기 때문.
+export async function saveTemplate(name: string, days: TemplateDay[]): Promise<TemplateStore> {
+  return withLock(TEMPLATES_FILE, async () => {
+    const store = await getTemplates();
+    const existing = store.items.find((t) => t.name === name);
+    const template: Template = { id: existing?.id ?? newId(), name, days };
+    const items = existing
+      ? store.items.map((t) => (t.id === template.id ? template : t))
+      : [...store.items, template];
+    const next: TemplateStore = { items, lastUsedId: template.id };
+    await writeJson(TEMPLATES_FILE, next);
+    return next;
+  });
+}
+
+export async function useTemplate(id: string): Promise<TemplateStore> {
+  return withLock(TEMPLATES_FILE, async () => {
+    const store = await getTemplates();
+    if (!store.items.some((t) => t.id === id)) return store;
+    const next: TemplateStore = { ...store, lastUsedId: id };
+    await writeJson(TEMPLATES_FILE, next);
+    return next;
+  });
+}
+
+export async function deleteTemplate(id: string): Promise<TemplateStore> {
+  return withLock(TEMPLATES_FILE, async () => {
+    const store = await getTemplates();
+    const items = store.items.filter((t) => t.id !== id);
+    const next: TemplateStore = {
+      items,
+      lastUsedId: store.lastUsedId === id ? null : store.lastUsedId,
+    };
+    await writeJson(TEMPLATES_FILE, next);
     return next;
   });
 }

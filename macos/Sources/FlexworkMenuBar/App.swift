@@ -18,6 +18,7 @@ struct MenuPanel: View {
     @ObservedObject var store: MenuStore
     @State private var password = ""
     @State private var otp = ""
+    @State private var templateName = ""
     @State private var confirmation: Confirmation?
     @State private var expandedRecord: String?
     private let modes = [("work", "근무"), ("holiday", "공휴일"), ("leave_full", "종일 연차"), ("leave_pm", "오후 반차"), ("leave_am", "오전 반차")]
@@ -134,6 +135,7 @@ struct MenuPanel: View {
                     if index < 4 { Divider() }
                 }
             }
+            templates
             HStack {
                 Button("40시간 맞춤") { store.transform("balance") }
                 if store.week == "this" {
@@ -163,6 +165,44 @@ struct MenuPanel: View {
             Text("반차·연차·공휴일은 8시간 인정 · 인쇄창에서 프린터 또는 PDF 저장을 선택하세요.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
+    }
+
+    // 자주 쓰는 주간 패턴. 고른 템플릿은 다음에 저장본 없는 주를 열 때 기본으로 깔린다.
+    private var templates: some View {
+        HStack(spacing: 6) {
+            Menu {
+                if store.templates.items.isEmpty {
+                    Text("저장된 템플릿 없음")
+                } else {
+                    ForEach(store.templates.items) { template in
+                        Button(template.id == store.templates.lastUsedId ? "\(template.name) ✓" : template.name) {
+                            store.useTemplate(template)
+                        }
+                    }
+                    Divider()
+                    ForEach(store.templates.items) { template in
+                        Button("\(template.name) 삭제") {
+                            confirm("\(template.name) 템플릿을 삭제할까요?", "되돌릴 수 없습니다.") {
+                                store.deleteTemplate(template)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("템플릿", systemImage: "square.on.square")
+            }.menuStyle(.borderlessButton).fixedSize()
+            TextField("이 일정을 템플릿으로 저장", text: $templateName)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(storeTemplate)
+            Button("저장", action: storeTemplate).disabled(templateName.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    private func storeTemplate() {
+        let name = templateName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        store.saveTemplate(name)
+        templateName = ""
     }
 
     private func dayRow(_ index: Int, _ day: WorkDay, _ plan: Plan) -> some View {

@@ -12,6 +12,7 @@ final class MenuStore: ObservableObject {
     @Published var notice = "서버에 연결한 뒤 로그인하세요."
     @Published var isError = false
     @Published var needsOTP = false
+    @Published var templates = TemplateStore()
     @Published var server = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:3000"
     private var api: API
     private var drafts: [String: Plan] = [:]
@@ -49,7 +50,50 @@ final class MenuStore: ObservableObject {
 
     private func loadWeek() async throws {
         let (data, _) = try await api.request("/api/menu-bar?week=\(week)")
-        plan = try JSONDecoder().decode(Plan.self, from: data)
+        let loaded = try JSONDecoder().decode(Plan.self, from: data)
+        plan = loaded
+        templates = loaded.templates
+    }
+
+    // ---- 주간 패턴 템플릿 ----
+    // 고른 템플릿은 서버에 기본값으로 기록해, 다음에 저장본 없는 주를 열면 그대로 깔린다.
+    func useTemplate(_ template: Template) {
+        run("\(template.name) 템플릿을 적용했습니다. 저장 버튼으로 기록을 남기세요.") {
+            guard var current = self.plan, template.days.count == current.days.count else { return }
+            for index in current.days.indices {
+                current.days[index].mode = "work"
+                current.days[index].holidayText = nil
+                current.days[index].start = template.days[index].start
+                current.days[index].end = template.days[index].end
+            }
+            current.saved = false
+            self.plan = current
+            try await self.postTemplate(["action": "use", "id": template.id])
+        }
+    }
+
+    func saveTemplate(_ name: String) {
+        run("\(name) 템플릿을 저장했습니다.") {
+            guard let current = self.plan else { return }
+            let days = try JSONSerialization.jsonObject(with: JSONEncoder().encode(current.days))
+            try await self.postTemplate([
+                "action": "save", "name": name,
+                "days": days, "periodStart": current.periodStart,
+            ])
+        }
+    }
+
+    func deleteTemplate(_ template: Template) {
+        run("\(template.name) 템플릿을 삭제했습니다.") {
+            let (data, _) = try await self.api.request("/api/menu-bar/templates?id=\(template.id)", method: "DELETE")
+            self.templates = try JSONDecoder().decode(TemplateStore.self, from: data)
+        }
+    }
+
+    private func postTemplate(_ body: [String: Any]) async throws {
+        let (data, _) = try await api.request("/api/menu-bar/templates", method: "POST",
+                                              body: JSONSerialization.data(withJSONObject: body))
+        templates = try JSONDecoder().decode(TemplateStore.self, from: data)
     }
 
     func selectWeek(_ value: String) {

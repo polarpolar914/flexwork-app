@@ -1,16 +1,25 @@
+import { applyTemplate, type Template } from "./template";
 import {
-  addDays, buildDefaultDays, END_OPTIONS, nextMonday, START_OPTIONS, thisMonday,
+  addDays, END_OPTIONS, nextMonday, START_OPTIONS, thisMonday,
   balanceToTarget, changeMode, DAY_MODE_LABEL, fillFromHiworks, parseWorkCalendar,
   type DayEntry, type DayMode, type Entry, type Settings,
 } from "@/lib/schedule";
 
-export function weekPlan(week: "this" | "next", entries: Entry[], settings: Settings) {
+// 저장본이 있으면 그걸 쓰고, 없으면 마지막에 고른 템플릿을 깐다.
+// 템플릿도 없을 때만 앱 기본 일정으로 떨어진다.
+export function weekPlan(
+  week: "this" | "next",
+  entries: Entry[],
+  settings: Settings,
+  template: Template | null = null
+) {
   const periodStart = week === "this" ? thisMonday() : nextMonday();
   const saved = entries.find((entry) => entry.periodStart === periodStart);
   return {
     periodStart, periodEnd: addDays(periodStart, 4),
     applyDate: saved?.applyDate ?? addDays(periodStart, -3),
-    days: saved?.days ?? buildDefaultDays(periodStart), settings: saved?.settings ?? settings,
+    days: saved?.days ?? applyTemplate(periodStart, template),
+    settings: saved?.settings ?? settings,
     saved: Boolean(saved), startOptions: START_OPTIONS, endOptions: END_OPTIONS,
   };
 }

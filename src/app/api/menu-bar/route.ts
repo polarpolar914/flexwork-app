@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, unauthorized } from "@/lib/auth";
-import { getEntries } from "@/lib/db";
+import { getEntries, getTemplates } from "@/lib/db";
 import { transformDays, weekPlan } from "@/features/menu-bar/model/plan";
+import { lastUsedTemplate } from "@/features/menu-bar/model/template";
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -10,7 +11,11 @@ export async function GET(req: Request) {
   if (week !== "this" && week !== "next") {
     return NextResponse.json({ error: "이번 주 또는 다음 주를 선택하세요." }, { status: 400 });
   }
-  return NextResponse.json(weekPlan(week, await getEntries(user.id), user.settings));
+  const [entries, templates] = await Promise.all([getEntries(user.id), getTemplates()]);
+  return NextResponse.json({
+    ...weekPlan(week, entries, user.settings, lastUsedTemplate(templates)),
+    templates,
+  });
 }
 
 export async function POST(req: Request) {

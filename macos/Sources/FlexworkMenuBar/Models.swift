@@ -27,6 +27,24 @@ struct WorkDay: Codable, Identifiable {
     }
 }
 
+// 자주 쓰는 주간 근무 패턴. 요일별 출퇴근 시각만 담는다.
+struct TemplateDay: Codable {
+    var start: String
+    var end: String
+}
+
+struct Template: Codable, Identifiable {
+    let id: String
+    let name: String
+    let days: [TemplateDay]
+}
+
+// lastUsedId는 저장본이 없는 주를 열었을 때 기본으로 깔리는 템플릿.
+struct TemplateStore: Codable {
+    var items: [Template] = []
+    var lastUsedId: String?
+}
+
 struct Plan: Codable {
     var periodStart: String
     var periodEnd: String
@@ -36,6 +54,7 @@ struct Plan: Codable {
     var saved: Bool
     var startOptions: [String]
     var endOptions: [String]
+    var templates: TemplateStore = TemplateStore()
     var total: Int { days.reduce(0) { $0 + $1.credit } }
     var totalLabel: String { "\(total / 60)시간 \(total % 60)분" }
 }
