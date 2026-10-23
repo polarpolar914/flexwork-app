@@ -28,5 +28,8 @@
   },
   "bin": {
     "flexwork": "bin/flexwork.cjs"
+  },
+  "overrides": {
+    "postcss": "^8.5.23"
   }
 }
