@@ -2,7 +2,7 @@ import Foundation
 
 // Plain HTTP is restricted to loopback; remote sessions require TLS.
 enum ServerAddress {
-    static let fallback = URL(string: "http://localhost:3000")!
+    static let fallback = URL(string: "http://localhost:1983")!
 
     static func parse(_ value: String) -> URL? {
         guard let parts = URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),

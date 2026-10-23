@@ -13,7 +13,7 @@ final class MenuStore: ObservableObject {
     @Published var isError = false
     @Published var needsOTP = false
     @Published var templates = TemplateStore()
-    @Published var server = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:3000"
+    @Published var server = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:1983"
     private var api: API
     private var drafts: [String: Plan] = [:]
     private let printer = Printer()

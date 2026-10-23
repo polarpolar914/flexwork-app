@@ -13,7 +13,7 @@ struct ServerAddressTests {
         print("Native menu bar checks passed")
     }
     static func testLocalAndSecureServers() {
-        ["http://localhost:3000", "http://127.0.0.1:3000/", "http://[::1]:3000", "https://flexwork.example.com"].forEach {
+        ["http://localhost:1983", "http://127.0.0.1:1983/", "http://[::1]:1983", "https://flexwork.example.com"].forEach {
             precondition(ServerAddress.parse($0) != nil, $0)
         }
     }
@@ -27,9 +27,9 @@ struct ServerAddressTests {
 
     static func testNavigationOriginIncludesPortAndScheme() {
         let base = ServerAddress.fallback
-        precondition(ServerAddress.isSameOrigin(URL(string: "http://localhost:3000/history")!, as: base))
-        precondition(!ServerAddress.isSameOrigin(URL(string: "http://localhost:3001")!, as: base))
-        precondition(!ServerAddress.isSameOrigin(URL(string: "https://localhost:3000")!, as: base))
+        precondition(ServerAddress.isSameOrigin(URL(string: "http://localhost:1983/history")!, as: base))
+        precondition(!ServerAddress.isSameOrigin(URL(string: "http://localhost:1984")!, as: base))
+        precondition(!ServerAddress.isSameOrigin(URL(string: "https://localhost:1983")!, as: base))
         precondition(!ServerAddress.isSameOrigin(URL(string: "https://example.com")!, as: base))
         precondition(ServerAddress.isSameOrigin(URL(string: "https://example.com:443/history")!, as: URL(string: "https://example.com")!))
     }

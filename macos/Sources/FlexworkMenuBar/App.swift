@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -19,16 +20,8 @@ struct MenuPanel: View {
     @State private var password = ""
     @State private var otp = ""
     @State private var templateName = ""
-    @State private var confirmation: Confirmation?
     @State private var expandedRecord: String?
     private let modes = [("work", "근무"), ("holiday", "공휴일"), ("leave_full", "종일 연차"), ("leave_pm", "오후 반차"), ("leave_am", "오전 반차")]
-
-    struct Confirmation: Identifiable {
-        let id = UUID()
-        let title: String
-        let detail: String
-        let action: () -> Void
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -79,14 +72,22 @@ struct MenuPanel: View {
         .padding(14)
         .frame(width: 540, height: 620)
         .disabled(store.busy)
-        .alert(item: $confirmation) { item in
-            Alert(title: Text(item.title), message: Text(item.detail),
-                  primaryButton: .default(Text("확인"), action: item.action), secondaryButton: .cancel(Text("취소")))
-        }
     }
 
+    // MenuBarExtra(.window)의 패널은 비활성 NSPanel이라, 거기서 띄운 SwiftUI .alert은
+    // 키 윈도우가 되지 못해 그려지기만 하고 확인 버튼 클릭을 받지 못한다.
+    // 저장 패널·인쇄창과 같이 앱을 먼저 활성화한 뒤 NSAlert을 모달로 돌린다.
+    // 패널이 닫히고 나서 뜨도록 다음 런루프로 미룬다.
     private func confirm(_ title: String, _ detail: String, action: @escaping () -> Void) {
-        confirmation = Confirmation(title: title, detail: detail, action: action)
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = detail
+            alert.addButton(withTitle: "확인")
+            alert.addButton(withTitle: "취소")
+            if alert.runModal() == .alertFirstButtonReturn { action() }
+        }
     }
 
     private var login: some View {
@@ -279,7 +280,7 @@ struct MenuPanel: View {
     private var settings: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("서버 연결").font(.headline)
-            TextField("http://localhost:3000", text: $store.server)
+            TextField("http://localhost:1983", text: $store.server)
             Button("서버 주소 적용") {
                 confirm("서버를 변경할까요?", "로그아웃되며 저장하지 않은 입력이 사라집니다.") { store.configureServer() }
             }
