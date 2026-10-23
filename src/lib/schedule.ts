@@ -334,10 +334,12 @@ function validSnap(hm: string | null, lo: number, hi: number): string | null {
   return hmFromMinutes(m);
 }
 
-// 10분 단위 스냅 후 [lo,hi]로 클램프(범위 밖이어도 버리지 않고 경계값). 미기록만 null.
+// 10분 단위 올림 후 [lo,hi]로 클램프(범위 밖이어도 버리지 않고 경계값). 미기록만 null.
+// 출근 전용: 반올림하면 09:04 출근이 09:00이 되어 일하지 않은 4분을 근무로 잡는다.
+// 올림이면 09:10이 되어 실제보다 유리하게 기록되지 않는다.
 function clampSnap(hm: string | null, lo: number, hi: number): string | null {
   if (!hm) return null;
-  const m = Math.round(toMinutes(hm) / 10) * 10;
+  const m = Math.ceil(toMinutes(hm) / 10) * 10;
   return hmFromMinutes(Math.max(lo, Math.min(hi, m)));
 }
 
