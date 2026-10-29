@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start -p 3000",
     "lint": "next lint",
     "cli": "tsx src/cli/index.ts",
@@ -15,9 +15,9 @@
   },
   "dependencies": {
     "docx": "^9.0.2",
-    "next": "^15.5.19",
-    "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
