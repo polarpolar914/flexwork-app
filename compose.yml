@@ -1,0 +1,25 @@
+# Deployed on CT102 by homeserver gitops-host (compose profile):
+#   APP_SHA=<sha> docker compose -p flexwork -f compose.yml build && ... up -d
+# APP_PASSWORD and the Hiworks login live only in this root-owned file on the host.
+services:
+  app:
+    build: .
+    image: flexwork-app:${APP_SHA:-local}
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3001:3001"
+    env_file: /etc/apps/flexwork.env
+    volumes:
+      - /var/lib/flexwork/data:/app/data
+      - /var/lib/flexwork/logs:/app/logs
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
